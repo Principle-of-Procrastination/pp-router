@@ -89,13 +89,26 @@ curl -s -X POST http://127.0.0.1:4000/chat \
 }
 ```
 
-**复杂 query（自动 → glm-5.1）**
+**四档自动路由示例（下表 `tier`/`score`/`model` 均为实测结果）**
+
+> ⚠️ 示例用英文：难度分类器（litellm `ComplexityRouter`）的关键词表是**纯英文**——reasoning marker（`step by step`、`evaluate`、`pros and cons`…）、technical term（`microservice`、`distributed`、`latency`…）、code keyword（`algorithm`、`async`、`api`…），且用英文词边界匹配。**纯中文 prompt 目前一律落到 SIMPLE**（待 Roadmap M2 中文增强）。
+
+| tier | score | 路由模型 | 示例 `query` |
+|---|---|---|---|
+| `SIMPLE` | `-0.10` | `glm-4.7-flash` | `2+2=?` |
+| `MEDIUM` | `+0.20` | `glm-4.7` | `how does database indexing improve query performance?` |
+| `COMPLEX` | `+0.43` | `glm-5.1` | `implement a concurrent rate limiter in python: needs threading, a queue, and must handle high throughput without race conditions on the shared counter` |
+| `REASONING` | `+0.38` | `qwen3.7-max` | `think step by step: analyze the performance trade-offs of Raft vs Paxos for our distributed system, and evaluate the pros and cons` |
+
+> `REASONING` 的触发条件是 score > 0.60 **或**命中 ≥2 个 reasoning marker——上例 score 仅 0.38，但同时命中 `step by step` 与 `evaluate`，故判为 REASONING。
+
+复杂 query 实跑一条（自动 → glm-5.1）：
 ```bash
 curl -s -X POST http://127.0.0.1:4000/chat \
   -H "Content-Type: application/json" \
-  -d '{"query":"think step by step: analyze the performance implications of implementing Raft for our microservices architecture"}'
+  -d '{"query":"implement a concurrent rate limiter in python: needs threading, a queue, and must handle high throughput without race conditions on the shared counter"}'
 ```
-返回 `routing.tier` 为 `COMPLEX`（→ `glm-5.1`）或 `REASONING`（→ `qwen3.7-max`）。
+返回 `routing.tier` 为 `COMPLEX`、`model` 为 `glm-5.1`。
 
 **强制指定模型（跳过分类）**
 ```bash
