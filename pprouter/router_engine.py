@@ -2,18 +2,17 @@ from typing import Any
 
 from litellm import Router
 
-from pprouter.config import API_BASE, BUILTIN_MODELS, get_api_key
+from pprouter.config import BUILTIN_MODELS, get_api_key
 
 
 def build_model_list() -> list[dict[str, Any]]:
-    api_key = get_api_key()
     return [
         {
             "model_name": m.id,
             "litellm_params": {
                 "model": m.litellm_model,
-                "api_base": API_BASE,
-                "api_key": api_key,
+                "api_base": m.api_base,
+                "api_key": get_api_key(m.api_key_env),
             },
             "model_info": {"id": m.id},
         }
