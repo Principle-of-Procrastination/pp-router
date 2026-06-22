@@ -118,6 +118,36 @@ curl -s -X POST http://127.0.0.1:4000/chat \
 ```
 `routing.forced` 为 `true`，`tier`/`score` 为 `null`。
 
+### `GET /history` — 历史请求看板
+
+每次成功的 `/chat` 都会追加一条记录（query / 实际模型 / tier / token 用量 / 时间）到 JSONL 文件（`history.jsonl`，已 gitignore）。本接口读回历史并附带汇总。
+
+| query 参数 | 默认 | 说明 |
+|---|---|---|
+| `limit` | `50` | 返回最近 N 条明细（`items`，最新在前）；`summary` 始终基于全部记录 |
+
+```bash
+curl -s "http://127.0.0.1:4000/history?limit=20"
+```
+```json
+{
+  "summary": {
+    "total_requests": 3,
+    "total_tokens": 3739,
+    "by_model": {
+      "glm-4.7-flash": {"requests": 1, "total_tokens": 171},
+      "glm-4.7": {"requests": 1, "total_tokens": 3283},
+      "qwen3.7-max": {"requests": 1, "total_tokens": 285}
+    }
+  },
+  "items": [
+    {"ts":"2026-06-22T16:45:29+08:00","query":"say hi in one word","model":"qwen3.7-max","tier":null,"forced":true,"score":null,"usage":{"prompt_tokens":15,"completion_tokens":270,"total_tokens":285}}
+  ]
+}
+```
+
+> 这是 Roadmap **M1** 的最小落地版（JSON 文件 + 看板接口）；尚未做 `source` 归因、成本/自有单位折算、Web 看板。
+
 ## 项目结构
 
 ```
@@ -127,12 +157,14 @@ pp-router/
 │   ├── schemas.py       # ChatRequest / ChatResponse 等 pydantic 模型
 │   ├── router_engine.py # 由 config 构建 model_list 与 litellm.Router
 │   ├── routing.py       # 包装 ComplexityRouter：分类 → 选 model_group
-│   ├── api.py           # POST /chat、GET /models
+│   ├── history.py       # HistoryStore：JSONL 落盘 + 读回（历史看板）
+│   ├── api.py           # POST /chat、GET /models、GET /history
 │   └── main.py          # FastAPI app + lifespan 装配
 ├── litellm/             # 只读依赖（vendored），不修改
+├── history.jsonl        # 运行时生成的请求历史（gitignore）
 ├── pyproject.toml
-├── .env.example         # BIGMODEL_API_KEY=
-└── .gitignore           # 忽略 .env、.venv
+├── .env.example         # BIGMODEL_API_KEY= / QWEN_API_KEY=
+└── .gitignore           # 忽略 .env、.venv、history.jsonl
 ```
 
 ## 说明与局限
@@ -140,7 +172,7 @@ pp-router/
 - 接入方式：litellm 无原生 BigModel / 通义 provider，统一用 `openai/` 兼容前缀 + 各模型自己的 `api_base`/`api_key` 调用（GLM → 智谱 BigModel，`qwen3.7-max` → 阿里通义 DashScope `compatible-mode`）。成本计算未启用（启动时的 cost-map 警告可忽略）。
 - 思考模式：GLM 可能返回 `reasoning_content`；若 `message.content` 为空则回落到 `reasoning_content`。
 - 难度分类只看最后一条 user 消息，词表偏英文，中文命中较弱（可在 `complexity_router_config` 自定义词表/边界后改善；见 Roadmap M2）。
-- 无持久化：模型在 `config.py` 写死，重启即恢复（见 Roadmap M1）。
+- 持久化：请求历史已落 `history.jsonl`（`GET /history` 看板，M1 最小版）；但模型清单仍在 `config.py` 写死，重启即恢复（动态注册见 Roadmap M3）。
 
 ## Roadmap（里程碑制）
 

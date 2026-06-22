@@ -1,9 +1,12 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
 
 from pprouter import api
+from pprouter.config import HISTORY_PATH
+from pprouter.history import HistoryStore
 from pprouter.router_engine import build_router
 from pprouter.routing import DifficultyRouter
 
@@ -15,6 +18,7 @@ async def lifespan(app: FastAPI):
     router = build_router()
     app.state.router = router
     app.state.difficulty = DifficultyRouter(router)
+    app.state.history = HistoryStore(Path(HISTORY_PATH))
     yield
 
 

@@ -52,6 +52,8 @@ TIER_MAP: dict[Tier, str] = {
 
 DEFAULT_GROUP = "glm-4.7-flash"
 
+HISTORY_PATH = "history.jsonl"
+
 
 def get_api_key(env_name: str) -> str:
     key = os.environ.get(env_name, "").strip()

@@ -49,3 +49,29 @@ class ModelInfo(BaseModel):
     id: str
     litellm_model: str
     tiers: list[str]
+
+
+class HistoryItem(BaseModel):
+    ts: str
+    query: str
+    model: str
+    tier: Optional[str] = None
+    forced: bool = False
+    score: Optional[float] = None
+    usage: Usage
+
+
+class ModelStat(BaseModel):
+    requests: int
+    total_tokens: int
+
+
+class HistorySummary(BaseModel):
+    total_requests: int
+    total_tokens: int
+    by_model: dict[str, ModelStat]
+
+
+class HistoryResponse(BaseModel):
+    summary: HistorySummary
+    items: list[HistoryItem]
