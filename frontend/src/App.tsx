@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { getModels, type ModelInfo } from "./api";
 import ChatPanel from "./components/ChatPanel";
-import ModelsPanel from "./components/ModelsPanel";
+import ModelsPopover from "./components/ModelsPopover";
 import HistoryPanel from "./components/HistoryPanel";
 
 export default function App() {
@@ -16,24 +16,25 @@ export default function App() {
   }, []);
 
   return (
-    <div className="flex h-screen flex-col bg-slate-950 text-slate-100">
-      <header className="border-b border-slate-800 px-6 py-3">
-        <h1 className="text-base font-semibold">
-          pp-router <span className="text-slate-500">控制台</span>
-        </h1>
-        <p className="text-xs text-slate-500">
-          难度自动路由的 LLM 网关 · 模型 / 对话 / 用量
-        </p>
+    <div className="flex h-screen flex-col">
+      <header className="flex items-center justify-between gap-4 border-b border-line px-6 py-4">
+        <div>
+          <h1 className="font-serif text-[1.55rem] font-medium leading-none tracking-tight text-fg">
+            pp<span className="text-accent-strong">·</span>router
+          </h1>
+          <p className="mt-1.5 font-mono text-[10.5px] lowercase tracking-[0.22em] text-fg-dim">
+            llm gateway — routed by difficulty
+          </p>
+        </div>
+        <ModelsPopover models={models} error={modelsError} />
       </header>
-      <main className="grid min-h-0 flex-1 grid-cols-1 gap-4 p-4 lg:grid-cols-[1fr_380px]">
+
+      <main className="grid min-h-0 flex-1 grid-cols-1 gap-5 p-5 lg:grid-cols-[1fr_380px] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden">
         <ChatPanel
           models={models}
           onChatComplete={() => setHistoryVersion((v) => v + 1)}
         />
-        <aside className="flex min-h-0 flex-col gap-4">
-          <ModelsPanel models={models} error={modelsError} />
-          <HistoryPanel version={historyVersion} />
-        </aside>
+        <HistoryPanel version={historyVersion} />
       </main>
     </div>
   );

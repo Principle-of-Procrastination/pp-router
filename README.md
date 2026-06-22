@@ -48,6 +48,55 @@ uv sync
 uv run uvicorn pprouter.main:app --host 127.0.0.1 --port 4000
 ```
 
+## 前端控制台（React + Tailwind）
+
+`frontend/` 是一个 Vite + React + TS + Tailwind v4 的单页控制台，提供：① 查看支持的模型；② 多轮对话（不持久化，刷新清空），可「自动路由」或指定模型；③ 历史 query 的模型与 token 用量看板。
+
+它通过 Vite dev 代理把 `/api/*` 转发到后端 `:4000`，所以**先起后端，再起前端**：
+
+```bash
+# 终端 A：后端（见上）
+uv run uvicorn pprouter.main:app --host 127.0.0.1 --port 4000
+
+# 终端 B：前端
+cd frontend
+npm install      # 首次
+npm run dev      # 打开 http://localhost:5173
+```
+
+> 注意用 `localhost`（Vite 默认绑 IPv6 `::1`，curl `127.0.0.1` 会连不上）。生产构建用 `npm run build`（产物在 `frontend/dist/`）；部署时需自行把 `/api` 指向后端（dev 代理仅 `npm run dev` 生效）。
+
+## 线上部署（CloudBase）
+
+已部署到 CloudBase 环境 `principleprocrastination-d6cb34f`（ap-shanghai）：
+
+| 角色 | 形态 | 访问地址 |
+|---|---|---|
+| 前端控制台 | 静态托管（manageApps / webapps） | https://pprouter-web-principleprocrastination-d6cb34f.webapps.tcloudbase.com/ |
+| 后端 API | 云托管 CloudRun 容器（`pprouter-api`） | https://pprouter-api-267965-8-1304190584.sh.run.tcloudbase.com |
+
+- 前端构建时通过 `VITE_API_BASE` 注入后端 URL（见 `src/api.ts`）；后端开了 CORS（`allow_origins=["*"]`）以支持跨域。
+- 后端容器要点：监听 **80** 端口（CloudBase 不注入 `PORT`，健康检查走 80）；设 `LITELLM_LOCAL_MODEL_COST_MAP=True` 跳过启动时拉远程 cost-map；`0.5C/1G`、`MinNum=1`（常驻 1 实例，省冷启动但会持续占用环境资源点）。
+- 凭据：`BIGMODEL_API_KEY` / `QWEN_API_KEY` 当前以 `ENV` 烤进镜像（`cloudrun/` 已 gitignore，不进版本库；镜像为环境私有）。更安全的做法是改用控制台「环境变量」配置（CloudRun 的 `serverConfig.EnvParams`）并删掉 Dockerfile 里那两行后重部署。
+- 局限：`history.jsonl` 写在容器本地磁盘，重部署/实例重建会清空（看板用量随之归零）；持久化需接 DB（Roadmap M1）。
+
+### 重新部署
+
+```bash
+# 后端（改完 pprouter/ 后，先同步到容器工程再部署）
+cp -r pprouter cloudrun/pprouter-api/pprouter
+npx mcporter call cloudbase.manageCloudRun action=deploy serverName=pprouter-api \
+  targetPath="$PWD/cloudrun/pprouter-api" serverType=container \
+  serverConfig='{"OpenAccessTypes":["PUBLIC"],"Cpu":0.5,"Mem":1,"MinNum":1,"MaxNum":1}' --output json
+
+# 前端（注入后端 URL 本地构建后直传 dist）
+cd frontend && VITE_API_BASE="https://pprouter-api-267965-8-1304190584.sh.run.tcloudbase.com" npm run build && cd ..
+npx mcporter call cloudbase.manageApps action=deployApp serviceName=pprouter-web \
+  filePath="$PWD/frontend/dist" framework=static installCmd='' buildCmd='' --output json
+```
+
+> mcporter 配置在 `config/mcporter.json`（含 `cwd` 指向仓库根，使 targetPath 校验通过）；首次需 `npx mcporter call cloudbase.auth action=start_auth authMode=device` 登录并 `set_env`。
+
 ## API
 
 ### `GET /models` — 列出内置模型
@@ -118,6 +167,26 @@ curl -s -X POST http://127.0.0.1:4000/chat \
 ```
 `routing.forced` 为 `true`，`tier`/`score` 为 `null`。
 
+### `POST /chat/stream` — 流式对话（SSE）
+
+请求体与 `/chat` 完全一致，返回 `text/event-stream`。前端控制台默认走此端点：强模型的长推理边生成边下发，不会被网关在 ~60s 处 504 截断。事件类型：
+
+| `type` | 含义 |
+|---|---|
+| `routing` | 首个事件，携带本次路由（`target_group`/`tier`/`score`/`forced`） |
+| `reasoning` | 思考内容增量（GLM thinking；前端显示「推理中…」，不计入正文） |
+| `delta` | 答案正文增量（逐字拼接） |
+| `done` | 结束事件，携带最终 `model` 与 `usage`（据此记历史） |
+| `error` | 上游出错（如限流），以事件下发，前端显示为「请求失败」 |
+
+上游静默时服务端每 15s 发一个 `: ping` 心跳保活；响应头带 `X-Accel-Buffering: no` 禁用网关缓冲，保证即时下发。
+
+```bash
+curl -sN -X POST http://127.0.0.1:4000/chat/stream \
+  -H "Content-Type: application/json" \
+  -d '{"query":"think step by step: 分析在微服务里引入 Raft 的性能影响"}'
+```
+
 ### `GET /history` — 历史请求看板
 
 每次成功的 `/chat` 都会追加一条记录（query / 实际模型 / tier / token 用量 / 时间）到 JSONL 文件（`history.jsonl`，已 gitignore）。本接口读回历史并附带汇总。
@@ -158,8 +227,10 @@ pp-router/
 │   ├── router_engine.py # 由 config 构建 model_list 与 litellm.Router
 │   ├── routing.py       # 包装 ComplexityRouter：分类 → 选 model_group
 │   ├── history.py       # HistoryStore：JSONL 落盘 + 读回（历史看板）
-│   ├── api.py           # POST /chat、GET /models、GET /history
+│   ├── api.py           # POST /chat、POST /chat/stream(SSE)、GET /models、GET /history
 │   └── main.py          # FastAPI app + lifespan 装配
+├── frontend/            # React + Tailwind 控制台（Vite，/api 代理到 :4000）
+│   └── src/             # api.ts + App + ChatPanel/ModelsPopover/HistoryPanel
 ├── litellm/             # 只读依赖（vendored），不修改
 ├── history.jsonl        # 运行时生成的请求历史（gitignore）
 ├── pyproject.toml

@@ -1,1 +1,67 @@
 @import "tailwindcss";
+
+@theme {
+  --font-sans:
+    "Inter Variable", ui-sans-serif, system-ui, -apple-system, "PingFang SC",
+    "Microsoft YaHei", sans-serif;
+  --font-serif: "Fraunces Variable", ui-serif, Georgia, "Songti SC", serif;
+  --font-mono:
+    "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* 暖近黑（stone）— 脱离冷 slate */
+  --color-ink: #0c0a09;
+  --color-surface: #16130f;
+  --color-surface-2: #211c17;
+  --color-line: #2b2521;
+  --color-fg: #f6f4f1;
+  --color-fg-muted: #a8a29e;
+  --color-fg-dim: #79716b;
+
+  /* 单一高级强调色：柔光青柠 */
+  --color-accent: #bef264;
+  --color-accent-strong: #a3e635;
+}
+
+html {
+  font-family: var(--font-sans);
+}
+
+body {
+  color: var(--color-fg);
+  background:
+    radial-gradient(
+      55rem 26rem at 78% -8%,
+      rgba(190, 242, 100, 0.07),
+      transparent 60%
+    ),
+    var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--color-accent);
+  color: var(--color-ink);
+}
+
+/* 细滚动条 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--color-line);
+  border-radius: 9999px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Fraunces 光学尺寸调到大字号更显编辑感 */
+.font-serif {
+  font-optical-sizing: auto;
+}

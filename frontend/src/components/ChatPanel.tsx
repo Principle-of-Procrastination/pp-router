@@ -1,22 +1,23 @@
 import { useState, type KeyboardEvent } from "react";
 import {
-  postChat,
-  type ChatResponse,
+  streamChat,
   type ModelInfo,
   type RoutingInfo,
   type Usage,
 } from "../api";
 import { TierBadge } from "./badges";
 
-type Turn =
-  | { role: "user"; content: string }
-  | {
-      role: "assistant";
-      content: string;
-      model: string;
-      routing: RoutingInfo;
-      usage: Usage;
-    };
+type AssistantTurn = {
+  role: "assistant";
+  content: string;
+  reasoning: boolean;
+  done: boolean;
+  model?: string;
+  routing?: RoutingInfo;
+  usage?: Usage;
+};
+
+type Turn = { role: "user"; content: string } | AssistantTurn;
 
 export default function ChatPanel({
   models,
@@ -31,34 +32,49 @@ export default function ChatPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  function patchLast(fn: (a: AssistantTurn) => AssistantTurn) {
+    setTurns((cur) => {
+      const copy = cur.slice();
+      const last = copy[copy.length - 1];
+      if (last && last.role === "assistant") copy[copy.length - 1] = fn(last);
+      return copy;
+    });
+  }
+
   async function send() {
     const text = input.trim();
     if (!text || loading) return;
 
-    const next: Turn[] = [...turns, { role: "user", content: text }];
-    setTurns(next);
+    const history: Turn[] = [...turns, { role: "user", content: text }];
+    setTurns([
+      ...history,
+      { role: "assistant", content: "", reasoning: false, done: false },
+    ]);
     setInput("");
     setLoading(true);
     setError(null);
 
     try {
-      const resp: ChatResponse = await postChat({
-        messages: next.map((t) => ({ role: t.role, content: t.content })),
-        ...(selected !== "auto" ? { model: selected } : {}),
-      });
-      setTurns((cur) => [
-        ...cur,
+      await streamChat(
         {
-          role: "assistant",
-          content: resp.content,
-          model: resp.model,
-          routing: resp.routing,
-          usage: resp.usage,
+          messages: history.map((t) => ({ role: t.role, content: t.content })),
+          ...(selected !== "auto" ? { model: selected } : {}),
         },
-      ]);
+        {
+          onRouting: (r) =>
+            patchLast((a) => ({ ...a, routing: r, model: r.target_group })),
+          onReasoning: () =>
+            patchLast((a) => (a.content ? a : { ...a, reasoning: true })),
+          onDelta: (t) =>
+            patchLast((a) => ({ ...a, content: a.content + t, reasoning: false })),
+          onDone: (d) =>
+            patchLast((a) => ({ ...a, model: d.model, usage: d.usage, done: true })),
+        },
+      );
       onChatComplete();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      patchLast((a) => ({ ...a, done: true }));
     } finally {
       setLoading(false);
     }
@@ -72,17 +88,18 @@ export default function ChatPanel({
   }
 
   return (
-    <section className="flex min-h-0 flex-col rounded-xl border border-slate-800 bg-slate-900/50">
-      <header className="flex items-center justify-between gap-3 border-b border-slate-800 px-4 py-3">
-        <h2 className="text-sm font-semibold text-slate-200">对话</h2>
+    <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl bg-surface/70 ring-1 ring-line">
+      <header className="flex items-center justify-between gap-3 border-b border-line px-5 py-3.5">
+        <span className="text-[11px] uppercase tracking-[0.2em] text-fg-dim">
+          对话
+        </span>
         <div className="flex items-center gap-2">
-          <label className="text-xs text-slate-400">模型</label>
           <select
             value={selected}
             onChange={(e) => setSelected(e.target.value)}
-            className="rounded-md border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-100 outline-none focus:border-sky-500"
+            className="rounded-lg border border-line bg-surface-2 px-2.5 py-1.5 font-mono text-[11px] text-fg-muted outline-none transition-colors hover:text-fg focus:border-accent/40"
           >
-            <option value="auto">自动路由（按难度）</option>
+            <option value="auto">自动路由</option>
             {models.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.id}
@@ -94,70 +111,110 @@ export default function ChatPanel({
               setTurns([]);
               setError(null);
             }}
-            className="rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-300 hover:bg-slate-800"
+            className="rounded-lg px-2.5 py-1.5 text-xs text-fg-dim transition-colors hover:bg-surface-2 hover:text-fg-muted"
           >
             清空
           </button>
         </div>
       </header>
 
-      <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
+      <div className="flex-1 space-y-6 overflow-y-auto px-5 py-6">
         {turns.length === 0 && (
-          <p className="mt-10 text-center text-sm text-slate-500">
-            输入一个问题开始对话。选「自动路由」由后端按难度选模型，或指定具体模型。
-          </p>
+          <div className="mx-auto mt-16 max-w-sm text-center">
+            <p className="font-serif text-xl text-fg-muted">
+              问一个问题，看它被路由到哪个模型。
+            </p>
+            <p className="mt-2 text-xs leading-relaxed text-fg-dim">
+              选「自动路由」由后端按难度挑模型，或在右上角指定。
+              强模型的长推理会逐字流式返回。
+            </p>
+          </div>
         )}
+
         {turns.map((t, i) =>
           t.role === "user" ? (
             <div key={i} className="flex justify-end">
-              <div className="max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-sky-600 px-3.5 py-2 text-sm text-white">
+              <div className="max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-surface-2 px-4 py-2.5 text-sm leading-relaxed text-fg ring-1 ring-line">
                 {t.content}
               </div>
             </div>
           ) : (
-            <div key={i} className="flex flex-col items-start gap-1">
-              <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-bl-sm bg-slate-800 px-3.5 py-2 text-sm text-slate-100">
-                {t.content}
-              </div>
-              <div className="flex flex-wrap items-center gap-1.5 pl-1 text-[11px] text-slate-400">
-                <span className="font-mono text-slate-300">{t.model}</span>
-                {t.routing.forced ? (
-                  <span className="rounded bg-slate-700 px-1.5 py-0.5">forced</span>
-                ) : (
-                  <>
-                    <TierBadge tier={t.routing.tier} />
-                    {t.routing.score !== null && (
-                      <span>score {t.routing.score.toFixed(2)}</span>
-                    )}
-                  </>
-                )}
-                <span className="text-slate-500">·</span>
-                <span>
-                  {t.usage.total_tokens} tok（in {t.usage.prompt_tokens} / out{" "}
-                  {t.usage.completion_tokens}）
+            <div key={i} className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <span className="h-1.5 w-1.5 rounded-full bg-accent-strong" />
+                <span className="text-[10px] uppercase tracking-[0.2em] text-fg-dim">
+                  router
                 </span>
               </div>
+              <div className="whitespace-pre-wrap pl-3.5 text-[15px] leading-7 text-fg/95">
+                {t.content ? (
+                  <>
+                    {t.content}
+                    {!t.done && (
+                      <span className="ml-0.5 animate-pulse text-accent-strong">
+                        ▌
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 text-fg-dim">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent-strong" />
+                    {t.reasoning ? "推理中…" : "生成中…"}
+                  </span>
+                )}
+              </div>
+              {t.done && t.usage && (
+                <div className="flex flex-wrap items-center gap-2 pl-3.5 text-[11px] text-fg-dim">
+                  <span className="font-mono text-fg-muted">{t.model}</span>
+                  {t.routing?.forced ? (
+                    <span className="rounded-full bg-surface-2 px-2 py-0.5 font-mono text-[10px] ring-1 ring-inset ring-line">
+                      forced
+                    </span>
+                  ) : (
+                    <>
+                      <TierBadge tier={t.routing?.tier ?? null} />
+                      {t.routing?.score != null && (
+                        <span className="font-mono">
+                          {t.routing.score.toFixed(2)}
+                        </span>
+                      )}
+                    </>
+                  )}
+                  <span className="text-line">·</span>
+                  <span className="font-mono tabular-nums">
+                    {t.usage.total_tokens} tok
+                    <span className="text-fg-dim/70">
+                      {" "}
+                      ({t.usage.prompt_tokens}/{t.usage.completion_tokens})
+                    </span>
+                  </span>
+                </div>
+              )}
             </div>
           ),
         )}
-        {loading && <p className="text-sm text-slate-500">思考中…</p>}
-        {error && <p className="text-sm text-rose-400">请求失败：{error}</p>}
+
+        {error && (
+          <div className="rounded-xl border border-[#3a2420] bg-[#1f1513] px-4 py-3 text-sm text-[#e8a89c]">
+            请求失败：{error}
+          </div>
+        )}
       </div>
 
-      <div className="border-t border-slate-800 p-3">
-        <div className="flex items-end gap-2">
+      <div className="border-t border-line p-3.5">
+        <div className="flex items-end gap-2.5">
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKeyDown}
             rows={2}
             placeholder="输入消息，Enter 发送，Shift+Enter 换行"
-            className="flex-1 resize-none rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-500 focus:border-sky-500"
+            className="flex-1 resize-none rounded-xl border border-line bg-surface-2 px-3.5 py-2.5 text-sm leading-relaxed text-fg outline-none transition-colors placeholder:text-fg-dim focus:border-accent/40"
           />
           <button
             onClick={send}
             disabled={loading || !input.trim()}
-            className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-xl bg-accent px-5 py-2.5 text-sm font-medium text-ink transition-colors hover:bg-accent-strong disabled:cursor-not-allowed disabled:bg-surface-2 disabled:text-fg-dim"
           >
             发送
           </button>
