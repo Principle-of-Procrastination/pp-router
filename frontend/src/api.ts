@@ -147,7 +147,11 @@ export async function streamChat(
       else if (evt.type === "done")
         handlers.onDone({
           model: evt.model ?? body.model ?? "",
-          usage: evt.usage ?? { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+          usage: evt.usage ?? {
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            total_tokens: 0,
+          },
         });
       else if (evt.type === "error") throw new Error(evt.detail ?? "upstream error");
     }

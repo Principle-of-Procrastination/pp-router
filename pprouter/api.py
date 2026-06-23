@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
-from pprouter.config import BUILTIN_MODELS
+from pprouter.config import BUILTIN_MODELS, MODEL_COMPLETION_KWARGS
 from pprouter.schemas import (
     ChatRequest,
     ChatResponse,
@@ -35,9 +35,14 @@ async def chat(req: ChatRequest, request: Request) -> ChatResponse:
     engine = request.app.state.router
     messages = req.to_messages()
     routing = _resolve_routing(req, request)
+    completion_kwargs = _completion_kwargs(routing.target_group)
 
     try:
-        resp = await engine.acompletion(model=routing.target_group, messages=messages)
+        resp = await engine.acompletion(
+            model=routing.target_group,
+            messages=messages,
+            **completion_kwargs,
+        )
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"upstream error: {e}") from e
 
@@ -56,11 +61,16 @@ async def chat_stream(req: ChatRequest, request: Request) -> StreamingResponse:
     engine = request.app.state.router
     messages = req.to_messages()
     routing = _resolve_routing(req, request)
+    completion_kwargs = _completion_kwargs(routing.target_group)
 
     async def events() -> Any:
         yield _sse({"type": "routing", "routing": routing.model_dump()})
         parts: list[str] = []
-        usage = Usage(prompt_tokens=0, completion_tokens=0, total_tokens=0)
+        usage = Usage(
+            prompt_tokens=0,
+            completion_tokens=0,
+            total_tokens=0,
+        )
         model_used = routing.target_group
         try:
             stream = await engine.acompletion(
@@ -68,6 +78,7 @@ async def chat_stream(req: ChatRequest, request: Request) -> StreamingResponse:
                 messages=messages,
                 stream=True,
                 stream_options={"include_usage": True},
+                **completion_kwargs,
             )
             it = stream.__aiter__()
             while True:
@@ -140,6 +151,10 @@ def _sse(obj: dict[str, Any]) -> str:
     return f"data: {json.dumps(obj, ensure_ascii=False)}\n\n"
 
 
+def _completion_kwargs(target_group: str) -> dict[str, Any]:
+    return MODEL_COMPLETION_KWARGS.get(target_group, {})
+
+
 @router.get("/history")
 def history(request: Request, limit: int = 50) -> HistoryResponse:
     records = request.app.state.history.read_all()
@@ -150,7 +165,10 @@ def history(request: Request, limit: int = 50) -> HistoryResponse:
         total_tokens += r.usage.total_tokens
         prev = by_model.get(r.model)
         if prev is None:
-            by_model[r.model] = ModelStat(requests=1, total_tokens=r.usage.total_tokens)
+            by_model[r.model] = ModelStat(
+                requests=1,
+                total_tokens=r.usage.total_tokens,
+            )
         else:
             by_model[r.model] = ModelStat(
                 requests=prev.requests + 1,
@@ -203,8 +221,16 @@ def _extract_content(resp: Any) -> str:
 def _extract_usage(resp: Any) -> Usage:
     usage = getattr(resp, "usage", None)
     if usage is None:
-        return Usage(prompt_tokens=0, completion_tokens=0, total_tokens=0)
+        return _empty_usage()
     return _usage_from(usage)
+
+
+def _empty_usage() -> Usage:
+    return Usage(
+        prompt_tokens=0,
+        completion_tokens=0,
+        total_tokens=0,
+    )
 
 
 def _usage_from(usage: Any) -> Usage:

@@ -8,7 +8,7 @@
 
 本期只做两件事：
 
-1. **内置四个模型**（硬编码，暂不做通用注册）：`glm-4.7-flash`（快/免费）、`glm-4.7`（标准）、`glm-5.1`（强）走智谱 BigModel，`qwen3.7-max`（旗舰/推理）走阿里通义 DashScope（均为 OpenAI 兼容端点，按模型各自配 base/key）。
+1. **内置四个模型**（硬编码，暂不做通用注册）：`step-3.7-flash`（快/简单）走 StepFun，`glm-4.7`（标准）、`glm-5.1`（强）走智谱 BigModel，`qwen3.7-max`（旗舰/推理）走阿里通义 DashScope（均为 OpenAI 兼容端点，按模型各自配 base/key）。
 2. **难度路由**：判难度 → 选模型 → 调用 → 返回 `content / model / usage / routing`。
 
 暂未做的能力（持久化、token 计量、看板、流式、中文增强、动态注册等）统一收敛在文末 [Roadmap](#roadmap里程碑制)，按 M1–M3 推进。
@@ -19,7 +19,7 @@
 
 | 难度档 | 分数区间（默认） | 模型 |
 |---|---|---|
-| SIMPLE | `< 0.15` | `glm-4.7-flash` |
+| SIMPLE | `< 0.15` | `step-3.7-flash` |
 | MEDIUM | `0.15 – 0.35` | `glm-4.7` |
 | COMPLEX | `0.35 – 0.60` | `glm-5.1` |
 | REASONING | `> 0.60` / 出现 ≥2 个推理标记 | `qwen3.7-max` |
@@ -29,14 +29,14 @@
 ## 环境要求
 
 - Python `>=3.10, <3.14`（litellm 约束；本项目用 [uv](https://docs.astral.sh/uv/) 管理，实测 3.13）
-- 一个智谱 BigModel API Key（`BIGMODEL_API_KEY`）与一个阿里通义 DashScope API Key（`QWEN_API_KEY`）；两者都需配置，缺任一启动即报错
+- 一个 StepFun API Key（`STEP_API_KEY`）、一个智谱 BigModel API Key（`BIGMODEL_API_KEY`）与一个阿里通义 DashScope API Key（`QWEN_API_KEY`）；三者都需配置，缺任一启动即报错
 
 ## 安装
 
 ```bash
 # 1. 配置 key
 cp .env.example .env
-# 编辑 .env，填入 BIGMODEL_API_KEY=<智谱 key> 与 QWEN_API_KEY=<通义 key>
+# 编辑 .env，填入 STEP_API_KEY=<StepFun key>、BIGMODEL_API_KEY=<智谱 key> 与 QWEN_API_KEY=<通义 key>
 
 # 2. 安装依赖（uv 会自动选 3.13 并以 editable 方式装本地 litellm）
 uv sync
@@ -77,7 +77,7 @@ npm run dev      # 打开 http://localhost:5173
 
 - 前端构建时通过 `VITE_API_BASE` 注入后端 URL（见 `src/api.ts`）；后端开了 CORS（`allow_origins=["*"]`）以支持跨域。
 - 后端容器要点：监听 **80** 端口（CloudBase 不注入 `PORT`，健康检查走 80）；设 `LITELLM_LOCAL_MODEL_COST_MAP=True` 跳过启动时拉远程 cost-map；`0.5C/1G`、`MinNum=1`（常驻 1 实例，省冷启动但会持续占用环境资源点）。
-- 凭据：`BIGMODEL_API_KEY` / `QWEN_API_KEY` 当前以 `ENV` 烤进镜像（`cloudrun/` 已 gitignore，不进版本库；镜像为环境私有）。更安全的做法是改用控制台「环境变量」配置（CloudRun 的 `serverConfig.EnvParams`）并删掉 Dockerfile 里那两行后重部署。
+- 凭据：`STEP_API_KEY` / `BIGMODEL_API_KEY` / `QWEN_API_KEY` 当前以 `ENV` 烤进镜像（`cloudrun/` 已 gitignore，不进版本库；镜像为环境私有）。更安全的做法是改用控制台「环境变量」配置（CloudRun 的 `serverConfig.EnvParams`）并删掉 Dockerfile 里那几行后重部署。
 - 局限：`history.jsonl` 写在容器本地磁盘，重部署/实例重建会清空（看板用量随之归零）；持久化需接 DB（Roadmap M1）。
 
 ### 重新部署
@@ -106,7 +106,7 @@ curl -s http://127.0.0.1:4000/models
 ```
 ```json
 [
-  {"id":"glm-4.7-flash","litellm_model":"openai/glm-4.7-flash","tiers":["SIMPLE"]},
+  {"id":"step-3.7-flash","litellm_model":"openai/step-3.7-flash","tiers":["SIMPLE"]},
   {"id":"glm-4.7","litellm_model":"openai/glm-4.7","tiers":["MEDIUM"]},
   {"id":"glm-5.1","litellm_model":"openai/glm-5.1","tiers":["COMPLEX"]},
   {"id":"qwen3.7-max","litellm_model":"openai/qwen3.7-max","tiers":["REASONING"]}
@@ -121,9 +121,9 @@ curl -s http://127.0.0.1:4000/models
 |---|---|---|
 | `query` | string | 单轮便捷写法，等价于 `messages=[{role:user, content:query}]` |
 | `messages` | array | OpenAI 风格 `{role, content}` 列表 |
-| `model` | string | 可选，强制用 `glm-4.7-flash` / `glm-4.7` / `glm-5.1` / `qwen3.7-max`，跳过难度分类 |
+| `model` | string | 可选，强制用 `step-3.7-flash` / `glm-4.7` / `glm-5.1` / `qwen3.7-max`，跳过难度分类 |
 
-**简单 query（自动 → glm-4.7-flash）**
+**简单 query（自动 → step-3.7-flash）**
 ```bash
 curl -s -X POST http://127.0.0.1:4000/chat \
   -H "Content-Type: application/json" \
@@ -132,8 +132,8 @@ curl -s -X POST http://127.0.0.1:4000/chat \
 ```json
 {
   "content": "4",
-  "model": "glm-4.7-flash",
-  "routing": {"target_group":"glm-4.7-flash","forced":false,"tier":"SIMPLE","score":-0.1},
+  "model": "step-3.7-flash",
+  "routing": {"target_group":"step-3.7-flash","forced":false,"tier":"SIMPLE","score":-0.1},
   "usage": {"prompt_tokens":9,"completion_tokens":107,"total_tokens":116}
 }
 ```
@@ -144,7 +144,7 @@ curl -s -X POST http://127.0.0.1:4000/chat \
 
 | tier | score | 路由模型 | 示例 `query` |
 |---|---|---|---|
-| `SIMPLE` | `-0.10` | `glm-4.7-flash` | `2+2=?` |
+| `SIMPLE` | `-0.10` | `step-3.7-flash` | `2+2=?` |
 | `MEDIUM` | `+0.20` | `glm-4.7` | `how does database indexing improve query performance?` |
 | `COMPLEX` | `+0.43` | `glm-5.1` | `implement a concurrent rate limiter in python: needs threading, a queue, and must handle high throughput without race conditions on the shared counter` |
 | `REASONING` | `+0.38` | `qwen3.7-max` | `think step by step: analyze the performance trade-offs of Raft vs Paxos for our distributed system, and evaluate the pros and cons` |
@@ -174,7 +174,7 @@ curl -s -X POST http://127.0.0.1:4000/chat \
 | `type` | 含义 |
 |---|---|
 | `routing` | 首个事件，携带本次路由（`target_group`/`tier`/`score`/`forced`） |
-| `reasoning` | 思考内容增量（GLM thinking；前端显示「推理中…」，不计入正文） |
+| `reasoning` | 思考内容增量（仅上游返回 thinking 时出现；前端显示「推理中…」，不计入正文） |
 | `delta` | 答案正文增量（逐字拼接） |
 | `done` | 结束事件，携带最终 `model` 与 `usage`（据此记历史） |
 | `error` | 上游出错（如限流），以事件下发，前端显示为「请求失败」 |
@@ -204,7 +204,7 @@ curl -s "http://127.0.0.1:4000/history?limit=20"
     "total_requests": 3,
     "total_tokens": 3739,
     "by_model": {
-      "glm-4.7-flash": {"requests": 1, "total_tokens": 171},
+      "step-3.7-flash": {"requests": 1, "total_tokens": 171},
       "glm-4.7": {"requests": 1, "total_tokens": 3283},
       "qwen3.7-max": {"requests": 1, "total_tokens": 285}
     }
@@ -234,14 +234,14 @@ pp-router/
 ├── litellm/             # 只读依赖（vendored），不修改
 ├── history.jsonl        # 运行时生成的请求历史（gitignore）
 ├── pyproject.toml
-├── .env.example         # BIGMODEL_API_KEY= / QWEN_API_KEY=
+├── .env.example         # STEP_API_KEY= / BIGMODEL_API_KEY= / QWEN_API_KEY=
 └── .gitignore           # 忽略 .env、.venv、history.jsonl
 ```
 
 ## 说明与局限
 
-- 接入方式：litellm 无原生 BigModel / 通义 provider，统一用 `openai/` 兼容前缀 + 各模型自己的 `api_base`/`api_key` 调用（GLM → 智谱 BigModel，`qwen3.7-max` → 阿里通义 DashScope `compatible-mode`）。成本计算未启用（启动时的 cost-map 警告可忽略）。
-- 思考模式：GLM 可能返回 `reasoning_content`；若 `message.content` 为空则回落到 `reasoning_content`。
+- 接入方式：litellm 无原生 StepFun / BigModel / 通义 provider，统一用 `openai/` 兼容前缀 + 各模型自己的 `api_base`/`api_key` 调用（`step-3.7-flash` → StepFun `https://api.stepfun.com/v1`，GLM → 智谱 BigModel，`qwen3.7-max` → 阿里通义 DashScope `compatible-mode`）。成本计算未启用（启动时的 cost-map 警告可忽略）。
+- 思考模式：除 `qwen3.7-max` 推理档外，普通聊天档会尽量关闭或降低思考强度以保持响应速度：GLM 4.7/5.1 通过 `extra_body={"thinking":{"type":"disabled"}}` 关闭 thinking；`step-3.7-flash` 不支持完全关闭 reasoning，改为 `extra_body={"reasoning_effort":"low"}`。若非流式响应的 `message.content` 为空，仍回落到 `reasoning_content`。
 - 难度分类只看最后一条 user 消息，词表偏英文，中文命中较弱（可在 `complexity_router_config` 自定义词表/边界后改善；见 Roadmap M2）。
 - 持久化：请求历史已落 `history.jsonl`（`GET /history` 看板，M1 最小版）；但模型清单仍在 `config.py` 写死，重启即恢复（动态注册见 Roadmap M3）。
 

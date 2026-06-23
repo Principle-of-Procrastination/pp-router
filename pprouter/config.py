@@ -19,15 +19,16 @@ class BuiltinModel:
     api_key_env: str
 
 
-# OpenAI-compatible endpoints. litellm has no native provider for either vendor,
+# OpenAI-compatible endpoints. litellm has no native provider for these vendors,
 # so every model is called via the `openai/` prefix + its own api_base/api_key.
+STEPFUN_API_BASE = "https://api.stepfun.com/v1"
 BIGMODEL_API_BASE = "https://open.bigmodel.cn/api/paas/v4"
 DASHSCOPE_API_BASE = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
 BUILTIN_MODELS: tuple[BuiltinModel, ...] = (
     BuiltinModel(
-        "glm-4.7-flash", "openai/glm-4.7-flash",
-        (Tier.SIMPLE,), BIGMODEL_API_BASE, "BIGMODEL_API_KEY",
+        "step-3.7-flash", "openai/step-3.7-flash",
+        (Tier.SIMPLE,), STEPFUN_API_BASE, "STEP_API_KEY",
     ),
     BuiltinModel(
         "glm-4.7", "openai/glm-4.7",
@@ -44,13 +45,21 @@ BUILTIN_MODELS: tuple[BuiltinModel, ...] = (
 )
 
 TIER_MAP: dict[Tier, str] = {
-    Tier.SIMPLE: "glm-4.7-flash",
+    Tier.SIMPLE: "step-3.7-flash",
     Tier.MEDIUM: "glm-4.7",
     Tier.COMPLEX: "glm-5.1",
     Tier.REASONING: "qwen3.7-max",
 }
 
-DEFAULT_GROUP = "glm-4.7-flash"
+DEFAULT_GROUP = "step-3.7-flash"
+
+# Keep non-reasoning tiers responsive. GLM supports disabling thinking; StepFun
+# 3.7 Flash only supports lowering reasoning effort, not a true off switch.
+MODEL_COMPLETION_KWARGS = {
+    "step-3.7-flash": {"extra_body": {"reasoning_effort": "low"}},
+    "glm-4.7": {"extra_body": {"thinking": {"type": "disabled"}}},
+    "glm-5.1": {"extra_body": {"thinking": {"type": "disabled"}}},
+}
 
 HISTORY_PATH = "history.jsonl"
 
