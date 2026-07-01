@@ -2,7 +2,7 @@
 
 一个最小可用（MVP）的 LLM 中转网关：一个 query 进来，**按难度自动路由**到不同的模型，返回结果并带上**实际使用的模型**与 **token 用量**。
 
-底座把 [litellm](./litellm) 当作库（`litellm.Router`）做执行引擎，难度分类复用 litellm 内置的 `ComplexityRouter`（纯本地规则、无额外 LLM 调用、<1ms）。
+底座把 [litellm](./litellm) 当作库（`litellm.Router`）做执行引擎，英文/混合英文难度分类复用 litellm 内置的 `ComplexityRouter`，中文场景叠加本项目的本地规则分类器（纯本地规则、无额外 LLM 调用、<1ms）。
 
 ## 当前范围
 
@@ -11,11 +11,11 @@
 1. **内置四个模型**（硬编码，暂不做通用注册）：`step-3.7-flash`（快/简单）走 StepFun，`glm-4.7`（标准）、`glm-5.1`（强）走智谱 BigModel，`qwen3.7-max`（旗舰/推理）走阿里通义 DashScope（均为 OpenAI 兼容端点，按模型各自配 base/key）。
 2. **难度路由**：判难度 → 选模型 → 调用 → 返回 `content / model / usage / routing`。
 
-暂未做的能力（持久化、token 计量、看板、流式、中文增强、动态注册等）统一收敛在文末 [Roadmap](#roadmap里程碑制)，按 M1–M3 推进。
+暂未做的能力（持久化、token 计量、看板、动态注册等）统一收敛在文末 [Roadmap](#roadmap里程碑制)，按 M1–M3 推进。
 
 ## 路由规则
 
-难度分级由 `ComplexityRouter.classify()` 给出（7 个维度加权打分 → 难度档），再映射到模型：
+难度分级先由 `ComplexityRouter.classify()` 给出（7 个维度加权打分 → 难度档）。当 prompt 含中文时，再由 `pprouter.zh_complexity` 进行中文规则评分；最终取更高的有效难度档，再映射到模型：
 
 | 难度档 | 分数区间（默认） | 模型 |
 |---|---|---|
@@ -24,7 +24,7 @@
 | COMPLEX | `0.35 – 0.60` | `glm-5.1` |
 | REASONING | `> 0.60` / 出现 ≥2 个推理标记 | `qwen3.7-max` |
 
-打分维度（权重）：tokenCount(0.10)、codePresence(0.30)、reasoningMarkers(0.25)、technicalTerms(0.25)、simpleIndicators(0.05, 负)、multiStepPatterns(0.03)、questionComplexity(0.02)。只取最后一条 user 消息分类；token 数用 `len//4` 字符估算；词表偏英文。映射表见 `pprouter/config.py` 的 `TIER_MAP`，分类封装见 `pprouter/routing.py`。
+英文打分维度（权重）：tokenCount(0.10)、codePresence(0.30)、reasoningMarkers(0.25)、technicalTerms(0.25)、simpleIndicators(0.05, 负)、multiStepPatterns(0.03)、questionComplexity(0.02)。中文规则额外识别：定义/翻译等简单问法，解释/总结/对比等中等任务，代码/架构/高并发/数据库/安全等复杂技术任务，以及“一步步/推导/权衡/取舍/选型”等推理决策任务。只取最后一条 user 消息分类；映射表见 `pprouter/config.py` 的 `TIER_MAP`，分类合并见 `pprouter/routing.py`。
 
 ## 环境要求
 
@@ -138,9 +138,7 @@ curl -s -X POST http://127.0.0.1:4000/chat \
 }
 ```
 
-**四档自动路由示例（下表 `tier`/`score`/`model` 均为实测结果）**
-
-> ⚠️ 示例用英文：难度分类器（litellm `ComplexityRouter`）的关键词表是**纯英文**——reasoning marker（`step by step`、`evaluate`、`pros and cons`…）、technical term（`microservice`、`distributed`、`latency`…）、code keyword（`algorithm`、`async`、`api`…），且用英文词边界匹配。**纯中文 prompt 目前一律落到 SIMPLE**（待 Roadmap M2 中文增强）。
+**四档自动路由示例（下表 `tier`/`score`/`model` 均为本地分类实测结果）**
 
 | tier | score | 路由模型 | 示例 `query` |
 |---|---|---|---|
@@ -148,6 +146,9 @@ curl -s -X POST http://127.0.0.1:4000/chat \
 | `MEDIUM` | `+0.20` | `glm-4.7` | `how does database indexing improve query performance?` |
 | `COMPLEX` | `+0.43` | `glm-5.1` | `implement a concurrent rate limiter in python: needs threading, a queue, and must handle high throughput without race conditions on the shared counter` |
 | `REASONING` | `+0.38` | `qwen3.7-max` | `think step by step: analyze the performance trade-offs of Raft vs Paxos for our distributed system, and evaluate the pros and cons` |
+| `MEDIUM` | `+0.35` | `glm-4.7` | `解释一下数据库索引为什么能加速查询` |
+| `COMPLEX` | `+0.48` | `glm-5.1` | `帮我设计一个高并发订单系统，包含缓存、限流、数据库分库分表` |
+| `REASONING` | `+0.97` | `qwen3.7-max` | `一步步分析我们应该用 Raft 还是 Paxos，并说明取舍` |
 
 > `REASONING` 的触发条件是 score > 0.60 **或**命中 ≥2 个 reasoning marker——上例 score 仅 0.38，但同时命中 `step by step` 与 `evaluate`，故判为 REASONING。
 
@@ -225,7 +226,8 @@ pp-router/
 │   ├── config.py        # 四个内置模型（含 per-model api_base/api_key_env）、TIER_MAP、key 读取
 │   ├── schemas.py       # ChatRequest / ChatResponse 等 pydantic 模型
 │   ├── router_engine.py # 由 config 构建 model_list 与 litellm.Router
-│   ├── routing.py       # 包装 ComplexityRouter：分类 → 选 model_group
+│   ├── routing.py       # 合并 LiteLLM 英文分类 + 中文分类：分类 → 选 model_group
+│   ├── zh_complexity.py # 本地中文难度分类规则
 │   ├── history.py       # HistoryStore：JSONL 落盘 + 读回（历史看板）
 │   ├── api.py           # POST /chat、POST /chat/stream(SSE)、GET /models、GET /history
 │   └── main.py          # FastAPI app + lifespan 装配
@@ -242,7 +244,7 @@ pp-router/
 
 - 接入方式：litellm 无原生 StepFun / BigModel / 通义 provider，统一用 `openai/` 兼容前缀 + 各模型自己的 `api_base`/`api_key` 调用（`step-3.7-flash` → StepFun `https://api.stepfun.com/v1`，GLM → 智谱 BigModel，`qwen3.7-max` → 阿里通义 DashScope `compatible-mode`）。成本计算未启用（启动时的 cost-map 警告可忽略）。
 - 思考模式：除 `qwen3.7-max` 推理档外，普通聊天档会尽量关闭或降低思考强度以保持响应速度：GLM 4.7/5.1 通过 `extra_body={"thinking":{"type":"disabled"}}` 关闭 thinking；`step-3.7-flash` 不支持完全关闭 reasoning，改为 `extra_body={"reasoning_effort":"low"}`。若非流式响应的 `message.content` 为空，仍回落到 `reasoning_content`。
-- 难度分类只看最后一条 user 消息，词表偏英文，中文命中较弱（可在 `complexity_router_config` 自定义词表/边界后改善；见 Roadmap M2）。
+- 难度分类只看最后一条 user 消息；中文已加本地规则增强，但仍是启发式分类，后续需要用真实线上样本持续调关键词、权重和边界。
 - 持久化：请求历史已落 `history.jsonl`（`GET /history` 看板，M1 最小版）；但模型清单仍在 `config.py` 写死，重启即恢复（动态注册见 Roadmap M3）。
 
 ## Roadmap（里程碑制）
@@ -254,7 +256,7 @@ pp-router/
 | 里程碑 | 时间窗（2026） | 工作日 | 主要交付 | 验收 |
 |---|---|---|---|---|
 | **M1** 计量与可观测 | 6/15 一 – 6/19 五 | 5d | 持久化落库 · token 计量单位 · `source` 归因 · `/stats` + 简易看板 | 6/19 |
-| **M2** 体验与中文增强 | 6/22 一 – 6/26 五 | 5d | `/chat` 流式（SSE） · 中文分类增强 | 6/26 |
+| **M2** 体验优化 | 6/22 一 – 6/26 五 | 5d | `/chat` 流式（SSE） · 中文分类调参 | 6/26 |
 | **M3** 动态化 | 6/29 一 – 7/1 三 | 3d | 运行时注册 · `TIER_MAP` 热更新 | 7/1 |
 
 **全部交付：2026-07-01（周三），约 2.5 周。** 若砍掉 Web 看板（仅留 `/stats`）、M3 只做内存态热更新，可提前至 6/26 收尾（约 2 周）；瓶颈在 M2 中文调参，不建议压。
@@ -272,12 +274,12 @@ pp-router/
 - **`source` 维度归因**：`/chat` 接收可选 `source` 字段 → 经 litellm `metadata={...}` 透传 → 落到 `StandardLoggingMetadata`，作为看板的归因维度。
 - **可视化看板**：读库展示用量 / 计量单位 / 成本，按模型 · tier · source 维度统计；先出 `GET /stats` JSON 接口，Web 看板随后。
 
-### M2 — 体验与中文增强
+### M2 — 体验优化
 
-目标：补齐流式响应与中文场景的分类准确度。
+目标：补齐流式响应，并基于真实样本持续调优中文场景的分类准确度。
 
 - **流式响应**：`/chat` 支持 SSE；底层用 `Router.acompletion(stream=True)` + `stream_options={"include_usage": True}`（或 `stream_chunk_builder` 聚合）拿流式 usage，保证计量在流式下不丢。
-- **中文难度分类增强**：通过 `complexity_router_config` 覆盖中文词表与 `token_thresholds` / `tier_boundaries`。⚠️ 这是真实扩展点（非 litellm 现成）：`ComplexityRouter` 现用 `\b` 词边界对中文不生效、`len // 4` 估 token 偏高，需替换中文 token 估算与匹配逻辑。
+- **中文难度分类调参**：当前已通过 `pprouter.zh_complexity` 叠加中文本地规则，后续用真实 query 样本继续调关键词、权重、token 估算与边界；不直接修改 vendored `litellm/`。
 
 ### M3 — 动态化
 
