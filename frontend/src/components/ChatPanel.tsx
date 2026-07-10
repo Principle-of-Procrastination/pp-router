@@ -1,5 +1,7 @@
-import { useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { Square } from "lucide-react";
 import {
+  ApiError,
   streamChat,
   type ModelInfo,
   type RoutingInfo,
@@ -23,15 +25,25 @@ type Turn = { role: "user"; content: string } | AssistantTurn;
 export default function ChatPanel({
   models,
   onChatComplete,
+  onUnauthorized,
 }: {
   models: ModelInfo[];
   onChatComplete: () => void;
+  onUnauthorized: () => void;
 }) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState("");
   const [selected, setSelected] = useState("auto");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const endRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ block: "end" });
+  }, [turns]);
+
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   function patchLast(fn: (a: AssistantTurn) => AssistantTurn) {
     setTurns((cur) => {
@@ -54,6 +66,8 @@ export default function ChatPanel({
     setInput("");
     setLoading(true);
     setError(null);
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     try {
       await streamChat(
@@ -71,12 +85,27 @@ export default function ChatPanel({
           onDone: (d) =>
             patchLast((a) => ({ ...a, model: d.model, usage: d.usage, done: true })),
         },
+        controller.signal,
       );
       onChatComplete();
     } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") {
+        patchLast((a) => ({
+          ...a,
+          content: a.content || "已停止生成",
+          done: true,
+          reasoning: false,
+        }));
+        return;
+      }
+      if (e instanceof ApiError && e.status === 401) {
+        onUnauthorized();
+        return;
+      }
       setError(e instanceof Error ? e.message : String(e));
       patchLast((a) => ({ ...a, done: true }));
     } finally {
+      abortRef.current = null;
       setLoading(false);
     }
   }
@@ -98,6 +127,7 @@ export default function ChatPanel({
           <select
             value={selected}
             onChange={(e) => setSelected(e.target.value)}
+            disabled={loading}
             className="rounded-lg border border-line bg-surface-2 px-2.5 py-1.5 font-mono text-[11px] text-fg-muted outline-none transition-colors hover:text-fg focus:border-accent/40"
           >
             <option value="auto">自动路由</option>
@@ -109,6 +139,7 @@ export default function ChatPanel({
           </select>
           <button
             onClick={() => {
+              abortRef.current?.abort();
               setTurns([]);
               setError(null);
             }}
@@ -196,6 +227,7 @@ export default function ChatPanel({
                 </div>
               ),
             )}
+            <div ref={endRef} />
           </div>
         )}
 
@@ -216,13 +248,25 @@ export default function ChatPanel({
             placeholder="输入消息…"
             className="max-h-32 min-h-10 flex-1 resize-none rounded-xl border border-line bg-surface-2 px-3 py-2 text-sm leading-normal text-fg outline-none transition-colors placeholder:text-fg-dim focus:border-accent/40 sm:min-h-11 sm:px-3.5 sm:py-2.5 lg:min-h-12"
           />
-          <button
-            onClick={send}
-            disabled={loading || !input.trim()}
-            className="shrink-0 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-ink transition-colors hover:bg-accent-strong disabled:cursor-not-allowed disabled:bg-surface-2 disabled:text-fg-dim sm:px-5 sm:py-2.5 lg:px-6"
-          >
-            发送
-          </button>
+          {loading ? (
+            <button
+              type="button"
+              onClick={() => abortRef.current?.abort()}
+              title="停止生成"
+              aria-label="停止生成"
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-line bg-surface-2 text-fg-muted hover:border-accent/40 hover:text-fg sm:h-11 sm:w-11 lg:h-12 lg:w-12"
+            >
+              <Square aria-hidden="true" className="h-4 w-4 fill-current" />
+            </button>
+          ) : (
+            <button
+              onClick={send}
+              disabled={!input.trim()}
+              className="shrink-0 rounded-md bg-accent px-4 py-2 text-sm font-medium text-ink transition-colors hover:bg-accent-strong disabled:cursor-not-allowed disabled:bg-surface-2 disabled:text-fg-dim sm:px-5 sm:py-2.5 lg:px-6"
+            >
+              发送
+            </button>
+          )}
         </div>
         <p className="mt-1.5 hidden text-[10px] text-fg-dim lg:block">
           Enter 发送 · Shift+Enter 换行

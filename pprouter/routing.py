@@ -13,6 +13,22 @@ TIER_RANK: dict[Tier, int] = {
     Tier.REASONING: 3,
 }
 
+FOLLOW_UP_MARKERS = (
+    "继续",
+    "接着",
+    "展开",
+    "详细说",
+    "然后呢",
+    "下一步",
+    "再说说",
+    "为什么",
+    "怎么做",
+    "go on",
+    "continue",
+    "more detail",
+    "what next",
+)
+
 
 class DifficultyRouter:
     def __init__(self, router: Router) -> None:
@@ -22,7 +38,7 @@ class DifficultyRouter:
         )
 
     def route(self, messages: list[dict[str, str]]) -> RoutingInfo:
-        prompt = _last_user_text(messages)
+        prompt = _routing_text(messages)
         if not prompt.strip():
             return RoutingInfo(target_group=DEFAULT_GROUP)
 
@@ -41,6 +57,23 @@ def _last_user_text(messages: list[dict[str, str]]) -> str:
         if message.get("role") == "user":
             return message.get("content") or ""
     return ""
+
+
+def _routing_text(messages: list[dict[str, str]]) -> str:
+    user_texts = [
+        (message.get("content") or "").strip()
+        for message in messages
+        if message.get("role") == "user" and (message.get("content") or "").strip()
+    ]
+    if not user_texts:
+        return ""
+    current = user_texts[-1]
+    if len(user_texts) < 2 or len(current) > 40:
+        return current
+    current_lower = current.lower()
+    if any(marker in current_lower for marker in FOLLOW_UP_MARKERS):
+        return f"{user_texts[-2]}\n{current}"
+    return current
 
 
 def _system_text(messages: list[dict[str, str]]) -> str:

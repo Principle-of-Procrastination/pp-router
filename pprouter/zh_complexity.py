@@ -61,7 +61,9 @@ COMPLEX_ACTION_KEYWORDS = (
 CODE_KEYWORDS = (
     "代码",
     "函数",
-    "类",
+    "类定义",
+    "面向对象",
+    "class",
     "脚本",
     "python",
     "javascript",
@@ -191,11 +193,10 @@ class ChineseComplexityResult:
 def classify_chinese(
     prompt: str, system_prompt: str = ""
 ) -> ChineseComplexityResult | None:
-    full_text = f"{system_prompt} {prompt}".strip()
-    if not _has_cjk(full_text):
-        return None
-
     user_text = prompt.strip()
+    if not _has_cjk(user_text):
+        return None
+    full_text = f"{system_prompt} {prompt}".strip()
     lower_full = full_text.lower()
     lower_user = user_text.lower()
 
@@ -229,7 +230,7 @@ def classify_chinese(
         score += 0.08
         signals.append(f"long ({tokens} tokens)")
 
-    if simple:
+    if simple and not (complex_actions or code):
         score -= 0.12
         signals.append(_signal("simple", simple))
     if medium_actions:
@@ -301,6 +302,12 @@ def _tier_for_score(
     if _is_reasoning(reasoning, decision, technical, code, medium_actions, tokens):
         return Tier.REASONING
 
+    if (
+        complex_actions
+        and (code or len(technical) >= 2 or (len(complex_actions) >= 2 and technical))
+    ) or (code and technical):
+        return Tier.COMPLEX
+
     # Short definition-style technical questions are usually not complex enough for
     # the stronger models, even when they contain terms like "数据库" or "架构".
     if simple and not (complex_actions or code or reasoning or decision) and tokens <= 32:
@@ -337,7 +344,19 @@ def _has_cjk(text: str) -> bool:
 
 
 def _matches(text: str, keywords: tuple[str, ...]) -> list[str]:
-    return [keyword for keyword in keywords if keyword.lower() in text]
+    occupied: list[tuple[int, int]] = []
+    matches: list[tuple[int, str]] = []
+    for keyword in sorted(keywords, key=len, reverse=True):
+        lowered = keyword.lower()
+        start = text.find(lowered)
+        while start != -1:
+            end = start + len(lowered)
+            if not any(start < used_end and end > used_start for used_start, used_end in occupied):
+                occupied.append((start, end))
+                matches.append((start, keyword))
+                break
+            start = text.find(lowered, start + 1)
+    return [keyword for _, keyword in sorted(matches)]
 
 
 def _signal(label: str, matches: list[str]) -> str:

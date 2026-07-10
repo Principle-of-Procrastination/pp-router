@@ -21,4 +21,15 @@ def build_model_list() -> list[dict[str, Any]]:
 
 
 def build_router() -> Router:
-    return Router(model_list=build_model_list())
+    return Router(
+        model_list=build_model_list(),
+        num_retries=1,
+        max_fallbacks=1,
+        fallbacks=[
+            {"step-3.7-flash": ["glm-4.7"]},
+            {"glm-4.7": ["glm-5.1"]},
+        ],
+        allowed_fails=2,
+        cooldown_time=30,
+        enable_pre_call_checks=True,
+    )

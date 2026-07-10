@@ -1,6 +1,6 @@
 [project]
 name = "pprouter"
-version = "0.1.0"
+version = "0.2.0"
 description = "pp-router MVP: difficulty-based LLM routing gateway over litellm"
 requires-python = ">=3.10,<3.14"
 dependencies = [
@@ -8,11 +8,23 @@ dependencies = [
     "uvicorn[standard]>=0.30",
     "pydantic>=2.7",
     "python-dotenv>=1.0",
-    "litellm",
+    "httpx>=0.28,<1",
+    "litellm==1.89.0",
 ]
 
 [tool.uv]
 package = false
 
-[tool.uv.sources]
-litellm = { path = "litellm", editable = true }
+[dependency-groups]
+dev = [
+    "pytest>=8,<10",
+    "ruff>=0.12,<1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100

@@ -60,18 +60,49 @@ export interface HistoryResponse {
   items: HistoryItem[];
 }
 
-// dev：留空走 Vite 代理 /api → :4000；prod：构建时注入 VITE_API_BASE=<后端URL>
+interface SessionResponse {
+  token: string;
+  expires_at: number;
+}
+
+type StoredSession = SessionResponse;
+
 const BASE = import.meta.env.VITE_API_BASE ?? "/api";
+const SESSION_KEY = "pprouter.session";
+
+export class ApiError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+export function hasSession(): boolean {
+  return getSession() !== null;
+}
+
+export function clearSession(): void {
+  sessionStorage.removeItem(SESSION_KEY);
+}
+
+export async function login(accessKey: string): Promise<void> {
+  const res = await fetch(BASE + "/session", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ access_key: accessKey }),
+  });
+  if (!res.ok) throw await toApiError(res);
+  const session = (await res.json()) as SessionResponse;
+  sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+}
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(BASE + path, {
-    headers: { "Content-Type": "application/json" },
-    ...init,
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`HTTP ${res.status}: ${text.slice(0, 300)}`);
-  }
+  const headers = authenticatedHeaders(init?.headers);
+  const res = await fetch(BASE + path, { ...init, headers });
+  if (!res.ok) throw await toApiError(res);
   return (await res.json()) as T;
 }
 
@@ -97,6 +128,15 @@ export interface StreamHandlers {
   onDone: (d: { model: string; usage: Usage }) => void;
 }
 
+interface StreamEvent {
+  type: string;
+  content?: string;
+  routing?: RoutingInfo;
+  model?: string;
+  usage?: Usage;
+  detail?: string;
+}
+
 export async function streamChat(
   body: ChatRequestBody,
   handlers: StreamHandlers,
@@ -104,56 +144,147 @@ export async function streamChat(
 ): Promise<void> {
   const res = await fetch(BASE + "/chat/stream", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authenticatedHeaders(),
     body: JSON.stringify(body),
     signal,
   });
-  if (!res.ok || !res.body) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`HTTP ${res.status}: ${text.slice(0, 300)}`);
-  }
+  if (!res.ok || !res.body) throw await toApiError(res);
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buf = "";
+  let receivedDone = false;
 
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
 
-    let sep: number;
-    while ((sep = buf.indexOf("\n\n")) !== -1) {
-      const block = buf.slice(0, sep);
-      buf = buf.slice(sep + 2);
-      const dataLine = block
-        .split("\n")
-        .find((l) => l.startsWith("data:"));
-      if (!dataLine) continue; // 心跳注释行 ": ping" 等忽略
-      const payload = dataLine.slice(5).trim();
-      if (!payload) continue;
+      let sep: number;
+      while ((sep = buf.indexOf("\n\n")) !== -1) {
+        const block = buf.slice(0, sep);
+        buf = buf.slice(sep + 2);
+        const dataLine = block.split("\n").find((line) => line.startsWith("data:"));
+        if (!dataLine) continue;
+        const payload = dataLine.slice(5).trim();
+        if (!payload) continue;
 
-      const evt = JSON.parse(payload) as {
-        type: string;
-        content?: string;
-        routing?: RoutingInfo;
-        model?: string;
-        usage?: Usage;
-        detail?: string;
-      };
-      if (evt.type === "routing" && evt.routing) handlers.onRouting?.(evt.routing);
-      else if (evt.type === "delta" && evt.content) handlers.onDelta(evt.content);
-      else if (evt.type === "reasoning") handlers.onReasoning?.();
-      else if (evt.type === "done")
-        handlers.onDone({
-          model: evt.model ?? body.model ?? "",
-          usage: evt.usage ?? {
-            prompt_tokens: 0,
-            completion_tokens: 0,
-            total_tokens: 0,
-          },
-        });
-      else if (evt.type === "error") throw new Error(evt.detail ?? "upstream error");
+        const event = parseStreamEvent(payload);
+        if (event.type === "routing" && event.routing) {
+          handlers.onRouting?.(event.routing);
+        } else if (event.type === "delta" && event.content) {
+          handlers.onDelta(event.content);
+        } else if (event.type === "reasoning") {
+          handlers.onReasoning?.();
+        } else if (event.type === "done") {
+          receivedDone = true;
+          handlers.onDone({
+            model: event.model ?? body.model ?? "",
+            usage: event.usage ?? emptyUsage(),
+          });
+        } else if (event.type === "error") {
+          throw new Error(event.detail ?? "upstream request failed");
+        }
+      }
     }
+  } finally {
+    reader.releaseLock();
   }
+
+  if (!receivedDone && !signal?.aborted) {
+    throw new Error("stream ended before completion");
+  }
+}
+
+function authenticatedHeaders(existing?: HeadersInit): Headers {
+  const session = getSession();
+  if (!session) throw new ApiError(401, "session expired");
+  const headers = new Headers(existing);
+  headers.set("Content-Type", "application/json");
+  headers.set("Authorization", `Bearer ${session.token}`);
+  return headers;
+}
+
+function getSession(): StoredSession | null {
+  const raw = sessionStorage.getItem(SESSION_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!isStoredSession(parsed) || parsed.expires_at <= Math.floor(Date.now() / 1000)) {
+      clearSession();
+      return null;
+    }
+    return parsed;
+  } catch {
+    clearSession();
+    return null;
+  }
+}
+
+function isStoredSession(value: unknown): value is StoredSession {
+  if (!value || typeof value !== "object") return false;
+  return (
+    "token" in value &&
+    typeof value.token === "string" &&
+    "expires_at" in value &&
+    typeof value.expires_at === "number"
+  );
+}
+
+function parseStreamEvent(payload: string): StreamEvent {
+  const value = JSON.parse(payload) as unknown;
+  if (!value || typeof value !== "object" || !("type" in value)) {
+    throw new Error("invalid stream event");
+  }
+  const event = value as Record<string, unknown>;
+  if (typeof event.type !== "string") throw new Error("invalid stream event type");
+  return {
+    type: event.type,
+    content: typeof event.content === "string" ? event.content : undefined,
+    detail: typeof event.detail === "string" ? event.detail : undefined,
+    model: typeof event.model === "string" ? event.model : undefined,
+    routing: isRoutingInfo(event.routing) ? event.routing : undefined,
+    usage: isUsage(event.usage) ? event.usage : undefined,
+  };
+}
+
+function isRoutingInfo(value: unknown): value is RoutingInfo {
+  if (!value || typeof value !== "object") return false;
+  const routing = value as Record<string, unknown>;
+  return (
+    typeof routing.target_group === "string" &&
+    typeof routing.forced === "boolean" &&
+    (typeof routing.tier === "string" || routing.tier === null) &&
+    (typeof routing.score === "number" || routing.score === null)
+  );
+}
+
+function isUsage(value: unknown): value is Usage {
+  if (!value || typeof value !== "object") return false;
+  const usage = value as Record<string, unknown>;
+  return (
+    typeof usage.prompt_tokens === "number" &&
+    typeof usage.completion_tokens === "number" &&
+    typeof usage.total_tokens === "number"
+  );
+}
+
+async function toApiError(res: Response): Promise<ApiError> {
+  const text = await res.text().catch(() => "");
+  let message = text.slice(0, 300) || `HTTP ${res.status}`;
+  try {
+    const payload = JSON.parse(text) as unknown;
+    if (payload && typeof payload === "object" && "detail" in payload) {
+      const detail = payload.detail;
+      message = typeof detail === "string" ? detail : JSON.stringify(detail);
+    }
+  } catch {
+    // Keep the bounded plain-text response.
+  }
+  return new ApiError(res.status, message);
+}
+
+function emptyUsage(): Usage {
+  return { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
 }

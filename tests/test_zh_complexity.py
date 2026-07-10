@@ -62,3 +62,29 @@ def test_base_classifier_wins_when_it_is_higher() -> None:
 
     assert merged_tier is Tier.COMPLEX
     assert merged_score == 0.43
+
+
+def test_overlapping_reasoning_keywords_are_counted_once() -> None:
+    result = classify_chinese("深入分析一下天气")
+
+    assert result is not None
+    assert result.tier is Tier.MEDIUM
+    assert result.signals == ("reasoning (深入分析)",)
+
+
+def test_common_word_containing_class_character_is_not_code() -> None:
+    result = classify_chinese("人类为什么需要睡眠？")
+
+    assert result is not None
+    assert result.tier is Tier.SIMPLE
+
+
+def test_complex_task_is_not_downgraded_by_short_output_instruction() -> None:
+    result = classify_chinese("简单回答：请设计并实现一个高并发订单系统")
+
+    assert result is not None
+    assert result.tier is Tier.COMPLEX
+
+
+def test_chinese_system_prompt_does_not_reclassify_english_user_text() -> None:
+    assert classify_chinese("Say hello", "你是一个代码助手") is None

@@ -3,5 +3,7 @@ __pycache__/
 *.pyc
 .env
 history.jsonl
+history.db
+.coverage
 config/mcporter.json
 cloudrun/

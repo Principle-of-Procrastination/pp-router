@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
-import { getHistory, type HistoryResponse } from "../api";
+import { ApiError, getHistory, type HistoryResponse } from "../api";
 import { TierBadge } from "./badges";
 import { formatUsageTokens } from "./usageText";
 
-export default function HistoryPanel({ version }: { version: number }) {
+export default function HistoryPanel({
+  version,
+  onUnauthorized,
+}: {
+  version: number;
+  onUnauthorized: () => void;
+}) {
   const [data, setData] = useState<HistoryResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -14,11 +20,15 @@ export default function HistoryPanel({ version }: { version: number }) {
     try {
       setData(await getHistory(50));
     } catch (e) {
+      if (e instanceof ApiError && e.status === 401) {
+        onUnauthorized();
+        return;
+      }
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [onUnauthorized]);
 
   useEffect(() => {
     void load();
@@ -32,6 +42,7 @@ export default function HistoryPanel({ version }: { version: number }) {
         </span>
         <button
           onClick={load}
+          disabled={loading}
           className="rounded-lg px-2.5 py-1 text-xs text-fg-dim transition-colors hover:bg-surface-2 hover:text-fg-muted"
         >
           {loading ? "刷新中…" : "刷新"}
