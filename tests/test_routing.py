@@ -22,6 +22,24 @@ def test_short_follow_up_inherits_previous_complex_task() -> None:
     assert result.target_group == "glm-5.1"
 
 
+def test_referential_follow_up_inherits_previous_complex_task() -> None:
+    router = DifficultyRouter(MagicMock())
+
+    result = router.route(
+        [
+            {
+                "role": "user",
+                "content": "设计一个零停机迁移方案，要求兼容旧客户端并且可以回滚",
+            },
+            {"role": "assistant", "content": "先给出迁移阶段。"},
+            {"role": "user", "content": "基于这个再详细一点"},
+        ]
+    )
+
+    assert result.tier == "COMPLEX"
+    assert result.target_group == "glm-5.1"
+
+
 def test_router_has_bounded_adjacent_tier_fallbacks(monkeypatch) -> None:
     monkeypatch.setenv("STEP_API_KEY", "step-key")
     monkeypatch.setenv("BIGMODEL_API_KEY", "bigmodel-key")

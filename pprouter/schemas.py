@@ -15,9 +15,7 @@ class Message(BaseModel):
 
 class ChatRequest(BaseModel):
     query: Optional[str] = Field(default=None, min_length=1, max_length=MAX_MESSAGE_CHARS)
-    messages: Optional[list[Message]] = Field(
-        default=None, min_length=1, max_length=MAX_MESSAGES
-    )
+    messages: Optional[list[Message]] = Field(default=None, min_length=1, max_length=MAX_MESSAGES)
     model: Optional[str] = Field(default=None, min_length=1, max_length=64)
 
     @model_validator(mode="after")
@@ -92,20 +90,6 @@ class HistorySummary(BaseModel):
 class HistoryResponse(BaseModel):
     summary: HistorySummary
     items: list[HistoryItem]
-
-
-class SessionRequest(BaseModel):
-    access_key: str = Field(min_length=1, max_length=512)
-
-
-class SessionResponse(BaseModel):
-    token: str
-    expires_at: int
-
-
-class SessionStatus(BaseModel):
-    authenticated: bool
-    expires_at: int
 
 
 class HealthResponse(BaseModel):

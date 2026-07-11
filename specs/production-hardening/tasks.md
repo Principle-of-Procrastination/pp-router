@@ -1,5 +1,7 @@
 # Implementation Plan
 
+> Completed for 0.2.0. Application session authentication was removed in the 0.3.0 public-access refresh.
+
 - [x] 1. Add validated runtime settings and remove Qwen
   - _Requirements: 1, 10_
 - [x] 2. Add access-key sessions, rate limiting, and concurrency admission

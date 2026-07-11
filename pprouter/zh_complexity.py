@@ -78,7 +78,9 @@ CODE_KEYWORDS = (
     "正则",
     "算法",
     "数据结构",
-    "复杂度",
+    "时间复杂度",
+    "空间复杂度",
+    "算法复杂度",
     "单元测试",
     "sdk",
     "api",
@@ -177,9 +179,98 @@ MULTI_STEP_KEYWORDS = (
     "流程",
 )
 
+CONSTRAINT_KEYWORDS = (
+    "要求",
+    "必须",
+    "需要满足",
+    "不能",
+    "不得",
+    "不要",
+    "禁止",
+    "不可",
+    "只允许",
+    "至少",
+    "最多",
+    "不超过",
+    "不少于",
+    "以内",
+    "兼容",
+    "保留",
+    "保持",
+    "前提",
+    "限制",
+    "约束",
+    "零停机",
+    "不停机",
+    "可回滚",
+    "高可用",
+    "低延迟",
+)
+
+DELIVERABLE_KEYWORDS = (
+    "上线方案",
+    "迁移方案",
+    "回滚方案",
+    "修复方案",
+    "监控指标",
+    "验收标准",
+    "排查顺序",
+    "验证方法",
+    "接口定义",
+    "数据模型",
+    "架构图",
+    "测试用例",
+    "风险清单",
+    "方案",
+    "计划",
+    "清单",
+    "报告",
+    "文档",
+    "版本",
+)
+
+EVALUATION_KEYWORDS = (
+    "成本",
+    "延迟",
+    "可靠性",
+    "可用性",
+    "性能",
+    "安全性",
+    "维护成本",
+    "维护复杂度",
+    "风险",
+    "收益",
+    "扩展性",
+    "可扩展性",
+    "一致性",
+)
+
+COMPOSITION_KEYWORDS = (
+    "同时",
+    "并且",
+    "以及",
+    "还要",
+    "分别",
+    "包含",
+    "包括",
+)
+
 MULTI_STEP_PATTERNS = (
     re.compile(r"第[一二三四五六七八九十\d]+"),
     re.compile(r"[一二三四五六七八九十\d]+[、.．]\s*"),
+)
+
+SCALE_PATTERNS = (
+    re.compile(r"(?:qps|tps)\s*(?:>=|>|≥)?\s*\d+", re.IGNORECASE),
+    re.compile(
+        r"每(?:秒|分钟|小时).{0,8}[一二三四五六七八九十百千万亿\d]+"
+        r"(?:次|请求|条|笔|个)"
+    ),
+    re.compile(
+        r"[一二三四五六七八九十百千万亿\d]+\s*"
+        r"(?:并发|用户|请求|数据|记录|订单|消息)"
+    ),
+    re.compile(r"(?:万级|百万|千万|亿级)(?:数据|请求|用户|并发|流量|订单)"),
 )
 
 
@@ -190,32 +281,32 @@ class ChineseComplexityResult:
     signals: tuple[str, ...]
 
 
-def classify_chinese(
-    prompt: str, system_prompt: str = ""
-) -> ChineseComplexityResult | None:
+def classify_chinese(prompt: str, system_prompt: str = "") -> ChineseComplexityResult | None:
     user_text = prompt.strip()
     if not _has_cjk(user_text):
         return None
-    full_text = f"{system_prompt} {prompt}".strip()
-    lower_full = full_text.lower()
     lower_user = user_text.lower()
 
-    simple = _matches(lower_full, SIMPLE_KEYWORDS)
-    medium_actions = _matches(lower_full, MEDIUM_ACTION_KEYWORDS)
-    complex_actions = _matches(lower_full, COMPLEX_ACTION_KEYWORDS)
-    code = _matches(lower_full, CODE_KEYWORDS)
-    technical = _matches(lower_full, TECHNICAL_KEYWORDS)
+    simple = _matches(lower_user, SIMPLE_KEYWORDS)
+    medium_actions = _matches(lower_user, MEDIUM_ACTION_KEYWORDS)
+    complex_actions = _matches(lower_user, COMPLEX_ACTION_KEYWORDS)
+    code = _matches(lower_user, CODE_KEYWORDS)
+    technical = _matches(lower_user, TECHNICAL_KEYWORDS)
     reasoning = _matches(lower_user, REASONING_KEYWORDS)
     decision = _matches(lower_user, DECISION_KEYWORDS)
     multi_step = _matches(lower_user, MULTI_STEP_KEYWORDS)
+    constraints = _matches(lower_user, CONSTRAINT_KEYWORDS)
+    deliverables = _matches(lower_user, DELIVERABLE_KEYWORDS)
+    evaluation = _matches(lower_user, EVALUATION_KEYWORDS)
+    composition = _matches(lower_user, COMPOSITION_KEYWORDS)
+    scale = [pattern.pattern for pattern in SCALE_PATTERNS if pattern.search(user_text)]
     multi_step.extend(
-        pattern.pattern
-        for pattern in MULTI_STEP_PATTERNS
-        if pattern.search(user_text)
+        pattern.pattern for pattern in MULTI_STEP_PATTERNS if pattern.search(user_text)
     )
 
     tokens = estimate_mixed_tokens(prompt)
     question_count = prompt.count("?") + prompt.count("？")
+    clause_count = len(re.findall(r"[，,；;、]", user_text))
 
     score = 0.0
     signals: list[str] = []
@@ -259,6 +350,36 @@ def classify_chinese(
     if multi_step:
         score += 0.05
         signals.append(_signal("multi-step", multi_step))
+    if constraints:
+        if len(constraints) >= 4:
+            score += 0.18
+        elif len(constraints) >= 2:
+            score += 0.11
+        else:
+            score += 0.05
+        signals.append(_signal("constraints", constraints))
+    if deliverables:
+        if len(deliverables) >= 3:
+            score += 0.20
+        elif len(deliverables) >= 2:
+            score += 0.13
+        else:
+            score += 0.06
+        signals.append(_signal("deliverables", deliverables))
+    if evaluation:
+        if len(evaluation) >= 3:
+            score += 0.18
+        elif len(evaluation) >= 2:
+            score += 0.11
+        else:
+            score += 0.05
+        signals.append(_signal("evaluation", evaluation))
+    if scale:
+        score += 0.16
+        signals.append("scale requirement")
+    if composition or clause_count >= 3:
+        score += 0.05
+        signals.append(_signal("composite", composition) if composition else "composite clauses")
     if question_count > 2:
         score += 0.04
         signals.append(f"{question_count} questions")
@@ -272,11 +393,15 @@ def classify_chinese(
         technical=technical,
         reasoning=reasoning,
         decision=decision,
+        constraints=constraints,
+        deliverables=deliverables,
+        evaluation=evaluation,
+        scale=scale,
         tokens=tokens,
     )
     return ChineseComplexityResult(
         tier=tier,
-        score=round(score, 3),
+        score=round(max(-1.0, min(1.0, score)), 3),
         signals=tuple(signals),
     )
 
@@ -297,20 +422,50 @@ def _tier_for_score(
     technical: list[str],
     reasoning: list[str],
     decision: list[str],
+    constraints: list[str],
+    deliverables: list[str],
+    evaluation: list[str],
+    scale: list[str],
     tokens: int,
 ) -> Tier:
-    if _is_reasoning(reasoning, decision, technical, code, medium_actions, tokens):
+    if _is_reasoning(
+        reasoning,
+        decision,
+        technical,
+        code,
+        medium_actions,
+        complex_actions,
+        constraints,
+        deliverables,
+        evaluation,
+        tokens,
+    ):
         return Tier.REASONING
 
     if (
         complex_actions
-        and (code or len(technical) >= 2 or (len(complex_actions) >= 2 and technical))
+        and (
+            code
+            or len(technical) >= 2
+            or len(deliverables) >= 2
+            or len(constraints) >= 2
+            or (len(complex_actions) >= 2 and technical)
+        )
     ) or (code and technical):
+        return Tier.COMPLEX
+
+    if (scale and len(constraints) >= 2) or (len(deliverables) >= 3 and len(constraints) >= 2):
         return Tier.COMPLEX
 
     # Short definition-style technical questions are usually not complex enough for
     # the stronger models, even when they contain terms like "数据库" or "架构".
-    if simple and not (complex_actions or code or reasoning or decision) and tokens <= 32:
+    if (
+        simple
+        and not (
+            complex_actions or code or reasoning or decision or constraints or deliverables or scale
+        )
+        and tokens <= 32
+    ):
         if len(technical) <= 2:
             return Tier.SIMPLE
         return Tier.MEDIUM
@@ -328,12 +483,22 @@ def _is_reasoning(
     technical: list[str],
     code: list[str],
     medium_actions: list[str],
+    complex_actions: list[str],
+    constraints: list[str],
+    deliverables: list[str],
+    evaluation: list[str],
     tokens: int,
 ) -> bool:
     if len(reasoning) >= 2:
         return True
+    if decision and len(evaluation) >= 3:
+        return True
     if decision and reasoning and (technical or code or medium_actions):
         return True
+    diagnostic_actions = {"排查", "调试", "修复", "审计"}
+    if reasoning and diagnostic_actions.intersection(complex_actions):
+        if technical or code or constraints or len(deliverables) >= 2:
+            return True
     if any(word in reasoning for word in ("推导", "证明", "论证", "根因分析")):
         return bool(technical or code or tokens > 40)
     return False

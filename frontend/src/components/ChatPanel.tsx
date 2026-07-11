@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Square } from "lucide-react";
 import {
-  ApiError,
   streamChat,
   type ModelInfo,
   type RoutingInfo,
@@ -25,11 +24,9 @@ type Turn = { role: "user"; content: string } | AssistantTurn;
 export default function ChatPanel({
   models,
   onChatComplete,
-  onUnauthorized,
 }: {
   models: ModelInfo[];
   onChatComplete: () => void;
-  onUnauthorized: () => void;
 }) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState("");
@@ -96,10 +93,6 @@ export default function ChatPanel({
           done: true,
           reasoning: false,
         }));
-        return;
-      }
-      if (e instanceof ApiError && e.status === 401) {
-        onUnauthorized();
         return;
       }
       setError(e instanceof Error ? e.message : String(e));

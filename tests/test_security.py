@@ -1,24 +1,6 @@
 import asyncio
 
-from pprouter.security import SessionManager, SlidingWindowRateLimiter
-
-
-def test_session_round_trip() -> None:
-    manager = SessionManager("a" * 24, "b" * 32, 300)
-
-    token, expires_at = manager.issue()
-    claims = manager.verify(token)
-
-    assert claims is not None
-    assert claims.subject == "owner"
-    assert claims.expires_at == expires_at
-
-
-def test_session_rejects_tampering() -> None:
-    manager = SessionManager("a" * 24, "b" * 32, 300)
-    token, _ = manager.issue()
-
-    assert manager.verify(token + "x") is None
+from pprouter.security import SlidingWindowRateLimiter
 
 
 def test_rate_limiter_returns_retry_after_limit() -> None:
@@ -35,3 +17,16 @@ def test_rate_limiter_returns_retry_after_limit() -> None:
     assert first == 0
     assert second == 0
     assert blocked >= 1
+
+
+def test_rate_limiter_prunes_expired_buckets() -> None:
+    limiter = SlidingWindowRateLimiter()
+
+    async def exercise() -> int:
+        for index in range(255):
+            await limiter.check(f"client:{index}", 1, window_seconds=0.001)
+        await asyncio.sleep(0.01)
+        await limiter.check("current", 1, window_seconds=0.001)
+        return len(limiter._events)
+
+    assert asyncio.run(exercise()) == 1

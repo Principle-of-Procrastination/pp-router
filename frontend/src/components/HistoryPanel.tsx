@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { ApiError, getHistory, type HistoryResponse } from "../api";
+import { getHistory, type HistoryResponse } from "../api";
 import { TierBadge } from "./badges";
 import { formatUsageTokens } from "./usageText";
 
 export default function HistoryPanel({
   version,
-  onUnauthorized,
 }: {
   version: number;
-  onUnauthorized: () => void;
 }) {
   const [data, setData] = useState<HistoryResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -20,15 +18,11 @@ export default function HistoryPanel({
     try {
       setData(await getHistory(50));
     } catch (e) {
-      if (e instanceof ApiError && e.status === 401) {
-        onUnauthorized();
-        return;
-      }
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
-  }, [onUnauthorized]);
+  }, []);
 
   useEffect(() => {
     void load();
@@ -94,7 +88,7 @@ export default function HistoryPanel({
               {data.items.map((it, i) => (
                 <li key={i} className="py-2 sm:py-3 lg:py-3.5">
                   <div className="truncate text-sm text-fg lg:text-[15px]" title={it.query}>
-                    {it.query}
+                    {it.query || "模型调用"}
                   </div>
                   <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] text-fg-dim">
                     <span className="font-mono text-fg-muted">{it.model}</span>

@@ -93,7 +93,7 @@ jsonschema==4.26.0
     # via litellm
 jsonschema-specifications==2025.9.1
     # via jsonschema
-litellm==1.89.0
+litellm==1.91.1
     # via pprouter
 markdown-it-py==4.2.0
     # via rich

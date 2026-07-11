@@ -14,7 +14,11 @@ def build_model_list() -> list[dict[str, Any]]:
                 "api_base": m.api_base,
                 "api_key": get_api_key(m.api_key_env),
             },
-            "model_info": {"id": m.id},
+            "model_info": {
+                "id": m.id,
+                "cache_creation_input_token_cost": 0.0,
+                "cache_read_input_token_cost": 0.0,
+            },
         }
         for m in BUILTIN_MODELS
     ]

@@ -11,7 +11,7 @@ from pprouter.config import Settings, docs_enabled, get_cors_origins
 from pprouter.history import CloudBaseHistoryStore, SQLiteHistoryStore
 from pprouter.router_engine import build_router
 from pprouter.routing import DifficultyRouter
-from pprouter.security import ConcurrencyGate, SessionManager, SlidingWindowRateLimiter
+from pprouter.security import ConcurrencyGate, SlidingWindowRateLimiter
 
 load_dotenv()
 
@@ -33,11 +33,6 @@ async def lifespan(app: FastAPI):
     app.state.router = router
     app.state.difficulty = DifficultyRouter(router)
     app.state.history = history
-    app.state.sessions = SessionManager(
-        settings.access_key,
-        settings.session_secret,
-        settings.session_ttl_seconds,
-    )
     app.state.rate_limiter = SlidingWindowRateLimiter()
     app.state.concurrency = ConcurrencyGate(settings.max_concurrent_requests)
     try:
@@ -49,7 +44,7 @@ async def lifespan(app: FastAPI):
 _docs_enabled = docs_enabled()
 app = FastAPI(
     title="pp-router",
-    version="0.2.0",
+    version="0.3.0",
     lifespan=lifespan,
     docs_url="/docs" if _docs_enabled else None,
     redoc_url="/redoc" if _docs_enabled else None,
@@ -59,7 +54,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=list(get_cors_origins()),
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+    allow_headers=["Content-Type", "X-Request-ID"],
 )
 
 

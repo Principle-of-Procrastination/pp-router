@@ -60,15 +60,7 @@ export interface HistoryResponse {
   items: HistoryItem[];
 }
 
-interface SessionResponse {
-  token: string;
-  expires_at: number;
-}
-
-type StoredSession = SessionResponse;
-
 const BASE = import.meta.env.VITE_API_BASE ?? "/api";
-const SESSION_KEY = "pprouter.session";
 
 export class ApiError extends Error {
   constructor(
@@ -80,27 +72,8 @@ export class ApiError extends Error {
   }
 }
 
-export function hasSession(): boolean {
-  return getSession() !== null;
-}
-
-export function clearSession(): void {
-  sessionStorage.removeItem(SESSION_KEY);
-}
-
-export async function login(accessKey: string): Promise<void> {
-  const res = await fetch(BASE + "/session", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ access_key: accessKey }),
-  });
-  if (!res.ok) throw await toApiError(res);
-  const session = (await res.json()) as SessionResponse;
-  sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
-}
-
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
-  const headers = authenticatedHeaders(init?.headers);
+  const headers = jsonHeaders(init?.headers);
   const res = await fetch(BASE + path, { ...init, headers });
   if (!res.ok) throw await toApiError(res);
   return (await res.json()) as T;
@@ -144,7 +117,7 @@ export async function streamChat(
 ): Promise<void> {
   const res = await fetch(BASE + "/chat/stream", {
     method: "POST",
-    headers: authenticatedHeaders(),
+    headers: jsonHeaders(),
     body: JSON.stringify(body),
     signal,
   });
@@ -197,39 +170,10 @@ export async function streamChat(
   }
 }
 
-function authenticatedHeaders(existing?: HeadersInit): Headers {
-  const session = getSession();
-  if (!session) throw new ApiError(401, "session expired");
+function jsonHeaders(existing?: HeadersInit): Headers {
   const headers = new Headers(existing);
   headers.set("Content-Type", "application/json");
-  headers.set("Authorization", `Bearer ${session.token}`);
   return headers;
-}
-
-function getSession(): StoredSession | null {
-  const raw = sessionStorage.getItem(SESSION_KEY);
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (!isStoredSession(parsed) || parsed.expires_at <= Math.floor(Date.now() / 1000)) {
-      clearSession();
-      return null;
-    }
-    return parsed;
-  } catch {
-    clearSession();
-    return null;
-  }
-}
-
-function isStoredSession(value: unknown): value is StoredSession {
-  if (!value || typeof value !== "object") return false;
-  return (
-    "token" in value &&
-    typeof value.token === "string" &&
-    "expires_at" in value &&
-    typeof value.expires_at === "number"
-  );
 }
 
 function parseStreamEvent(payload: string): StreamEvent {

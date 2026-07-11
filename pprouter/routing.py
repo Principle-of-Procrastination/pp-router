@@ -18,11 +18,20 @@ FOLLOW_UP_MARKERS = (
     "接着",
     "展开",
     "详细说",
+    "再详细",
+    "详细一点",
+    "具体一点",
     "然后呢",
     "下一步",
     "再说说",
+    "还有呢",
+    "还有吗",
     "为什么",
     "怎么做",
+    "这个方案",
+    "上述方案",
+    "基于这个",
+    "按这个",
     "go on",
     "continue",
     "more detail",
@@ -68,7 +77,7 @@ def _routing_text(messages: list[dict[str, str]]) -> str:
     if not user_texts:
         return ""
     current = user_texts[-1]
-    if len(user_texts) < 2 or len(current) > 40:
+    if len(user_texts) < 2 or len(current) > 60:
         return current
     current_lower = current.lower()
     if any(marker in current_lower for marker in FOLLOW_UP_MARKERS):
@@ -78,9 +87,7 @@ def _routing_text(messages: list[dict[str, str]]) -> str:
 
 def _system_text(messages: list[dict[str, str]]) -> str:
     return " ".join(
-        message.get("content") or ""
-        for message in messages
-        if message.get("role") == "system"
+        message.get("content") or "" for message in messages if message.get("role") == "system"
     )
 
 

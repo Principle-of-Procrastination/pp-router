@@ -25,16 +25,25 @@ STEPFUN_API_BASE = "https://api.stepfun.com/v1"
 BIGMODEL_API_BASE = "https://open.bigmodel.cn/api/paas/v4"
 BUILTIN_MODELS: tuple[BuiltinModel, ...] = (
     BuiltinModel(
-        "step-3.7-flash", "openai/step-3.7-flash",
-        (Tier.SIMPLE,), STEPFUN_API_BASE, "STEP_API_KEY",
+        "step-3.7-flash",
+        "openai/step-3.7-flash",
+        (Tier.SIMPLE,),
+        STEPFUN_API_BASE,
+        "STEP_API_KEY",
     ),
     BuiltinModel(
-        "glm-4.7", "openai/glm-4.7",
-        (Tier.MEDIUM,), BIGMODEL_API_BASE, "BIGMODEL_API_KEY",
+        "glm-4.7",
+        "openai/glm-4.7",
+        (Tier.MEDIUM,),
+        BIGMODEL_API_BASE,
+        "BIGMODEL_API_KEY",
     ),
     BuiltinModel(
-        "glm-5.1", "openai/glm-5.1",
-        (Tier.COMPLEX, Tier.REASONING), BIGMODEL_API_BASE, "BIGMODEL_API_KEY",
+        "glm-5.1",
+        "openai/glm-5.1",
+        (Tier.COMPLEX, Tier.REASONING),
+        BIGMODEL_API_BASE,
+        "BIGMODEL_API_KEY",
     ),
 )
 
@@ -64,12 +73,10 @@ DEFAULT_CORS_ORIGINS = (
 
 @dataclass(frozen=True, slots=True)
 class Settings:
-    access_key: str
-    session_secret: str
     cors_origins: tuple[str, ...]
-    session_ttl_seconds: int
-    login_attempts_per_minute: int
     chat_requests_per_minute: int
+    global_chat_requests_per_minute: int
+    read_requests_per_minute: int
     max_concurrent_requests: int
     upstream_timeout_seconds: float
     stream_heartbeat_seconds: float
@@ -81,36 +88,23 @@ class Settings:
 
     @classmethod
     def from_env(cls) -> "Settings":
-        access_key = _required_secret("PPROUTER_ACCESS_KEY", min_length=24)
-        session_secret = _required_secret("PPROUTER_SESSION_SECRET", min_length=32)
         cloudbase_env_id = _optional_env("CLOUDBASE_ENV_ID")
         cloudbase_api_key = _optional_env("CLOUDBASE_API_KEY")
         if bool(cloudbase_env_id) != bool(cloudbase_api_key):
-            raise RuntimeError(
-                "CLOUDBASE_ENV_ID and CLOUDBASE_API_KEY must be configured together"
-            )
+            raise RuntimeError("CLOUDBASE_ENV_ID and CLOUDBASE_API_KEY must be configured together")
 
         return cls(
-            access_key=access_key,
-            session_secret=session_secret,
             cors_origins=get_cors_origins(),
-            session_ttl_seconds=_int_env("SESSION_TTL_SECONDS", 43_200, 300, 604_800),
-            login_attempts_per_minute=_int_env(
-                "LOGIN_ATTEMPTS_PER_MINUTE", 5, 1, 60
+            chat_requests_per_minute=_int_env("CHAT_REQUESTS_PER_MINUTE", 30, 1, 600),
+            global_chat_requests_per_minute=_int_env(
+                "GLOBAL_CHAT_REQUESTS_PER_MINUTE", 120, 1, 10_000
             ),
-            chat_requests_per_minute=_int_env(
-                "CHAT_REQUESTS_PER_MINUTE", 30, 1, 600
-            ),
+            read_requests_per_minute=_int_env("READ_REQUESTS_PER_MINUTE", 120, 1, 10_000),
             max_concurrent_requests=_int_env("MAX_CONCURRENT_REQUESTS", 4, 1, 64),
-            upstream_timeout_seconds=_float_env(
-                "UPSTREAM_TIMEOUT_SECONDS", 180.0, 10.0, 900.0
-            ),
-            stream_heartbeat_seconds=_float_env(
-                "STREAM_HEARTBEAT_SECONDS", 15.0, 1.0, 60.0
-            ),
+            upstream_timeout_seconds=_float_env("UPSTREAM_TIMEOUT_SECONDS", 180.0, 10.0, 900.0),
+            stream_heartbeat_seconds=_float_env("STREAM_HEARTBEAT_SECONDS", 15.0, 1.0, 60.0),
             max_output_tokens=_int_env("MAX_OUTPUT_TOKENS", 4096, 128, 32_768),
-            history_path=os.environ.get("HISTORY_PATH", "history.db").strip()
-            or "history.db",
+            history_path=os.environ.get("HISTORY_PATH", "history.db").strip() or "history.db",
             cloudbase_env_id=cloudbase_env_id,
             cloudbase_api_key=cloudbase_api_key,
             cloudbase_history_collection=os.environ.get(
@@ -131,7 +125,9 @@ def get_cors_origins() -> tuple[str, ...]:
     raw = os.environ.get("CORS_ORIGINS", "")
     if not raw.strip():
         return DEFAULT_CORS_ORIGINS
-    origins = tuple(dict.fromkeys(part.strip().rstrip("/") for part in raw.split(",") if part.strip()))
+    origins = tuple(
+        dict.fromkeys(part.strip().rstrip("/") for part in raw.split(",") if part.strip())
+    )
     if not origins or "*" in origins:
         raise RuntimeError("CORS_ORIGINS must contain explicit origins, not '*'")
     return origins
@@ -143,13 +139,6 @@ def docs_enabled() -> bool:
         "true",
         "yes",
     }
-
-
-def _required_secret(name: str, *, min_length: int) -> str:
-    value = os.environ.get(name, "").strip()
-    if len(value) < min_length:
-        raise RuntimeError(f"environment variable {name} must be at least {min_length} characters")
-    return value
 
 
 def _optional_env(name: str) -> str | None:

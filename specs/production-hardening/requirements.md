@@ -1,5 +1,7 @@
 # Production Hardening Requirements
 
+> The access-key requirements below describe the 0.2.0 release and are superseded by `../public-access-refresh/requirements.md` from 0.3.0 onward.
+
 ## Scope
 
 Harden the public pp-router deployment, remove Qwen, fix streaming and Chinese
@@ -37,4 +39,3 @@ classification correctness, persist usage history, and make deployment reproduci
 - Creating a new paid PostgreSQL or MySQL instance.
 - Rotating StepFun or BigModel credentials inside the vendors' account consoles.
 - Rewriting Git history automatically to remove the old vendored LiteLLM objects.
-

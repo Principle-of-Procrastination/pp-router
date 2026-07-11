@@ -7,25 +7,23 @@ from contextlib import suppress
 from datetime import datetime
 from typing import Any, AsyncIterator
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
 from pprouter.config import BUILTIN_MODELS, MODEL_COMPLETION_KWARGS, Settings, Tier
-from pprouter.history import HistoryStoreError
+from pprouter.history import HistoryStore, HistoryStoreError
 from pprouter.schemas import (
     ChatRequest,
     ChatResponse,
     HealthResponse,
     HistoryItem,
     HistoryResponse,
+    HistorySummary,
     ModelInfo,
     RoutingInfo,
-    SessionRequest,
-    SessionResponse,
-    SessionStatus,
     Usage,
 )
-from pprouter.security import SessionClaims, client_address, require_session
+from pprouter.security import client_address
 
 
 logger = logging.getLogger(__name__)
@@ -42,38 +40,8 @@ def health() -> HealthResponse:
     return HealthResponse()
 
 
-@router.post("/session")
-async def create_session(req: SessionRequest, request: Request) -> SessionResponse:
-    settings: Settings = request.app.state.settings
-    address = client_address(request)
-    await _enforce_rate_limit(
-        request,
-        f"login-ip:{address}",
-        settings.login_attempts_per_minute,
-    )
-    await _enforce_rate_limit(
-        request,
-        "login-global",
-        settings.login_attempts_per_minute * 4,
-    )
-    if not request.app.state.sessions.verify_access_key(req.access_key):
-        await asyncio.sleep(0.15)
-        raise HTTPException(status_code=401, detail="invalid access key")
-    token, expires_at = request.app.state.sessions.issue()
-    return SessionResponse(token=token, expires_at=expires_at)
-
-
-@router.get("/session")
-def session_status(
-    claims: SessionClaims = Depends(require_session),
-) -> SessionStatus:
-    return SessionStatus(authenticated=True, expires_at=claims.expires_at)
-
-
 @router.get("/models")
-def list_models(
-    _claims: SessionClaims = Depends(require_session),
-) -> list[ModelInfo]:
+def list_models() -> list[ModelInfo]:
     return [
         ModelInfo(id=m.id, litellm_model=m.litellm_model, tiers=[t.value for t in m.tiers])
         for m in BUILTIN_MODELS
@@ -84,14 +52,9 @@ def list_models(
 async def chat(
     req: ChatRequest,
     request: Request,
-    claims: SessionClaims = Depends(require_session),
 ) -> ChatResponse:
     settings: Settings = request.app.state.settings
-    await _enforce_rate_limit(
-        request,
-        f"chat:{claims.subject}",
-        settings.chat_requests_per_minute,
-    )
+    await _enforce_chat_rate_limit(request, settings)
     if not await request.app.state.concurrency.acquire():
         raise HTTPException(
             status_code=429,
@@ -137,14 +100,9 @@ async def chat(
 async def chat_stream(
     req: ChatRequest,
     request: Request,
-    claims: SessionClaims = Depends(require_session),
 ) -> StreamingResponse:
     settings: Settings = request.app.state.settings
-    await _enforce_rate_limit(
-        request,
-        f"chat:{claims.subject}",
-        settings.chat_requests_per_minute,
-    )
+    await _enforce_chat_rate_limit(request, settings)
     if not await request.app.state.concurrency.acquire():
         raise HTTPException(
             status_code=429,
@@ -248,22 +206,31 @@ async def chat_stream(
 
 
 @router.get("/history")
-def history(
+async def history(
     request: Request,
     limit: int = Query(default=50, ge=1, le=100),
-    _claims: SessionClaims = Depends(require_session),
 ) -> HistoryResponse:
+    settings: Settings = request.app.state.settings
+    await _enforce_rate_limit(
+        request,
+        f"read:{client_address(request)}",
+        settings.read_requests_per_minute,
+    )
     request_id = _request_id(request)
     try:
-        summary = request.app.state.history.summary()
-        items = request.app.state.history.recent(limit)
+        summary, items = await asyncio.to_thread(
+            _read_history,
+            request.app.state.history,
+            limit,
+        )
     except HistoryStoreError as exc:
         logger.exception("history query failed request_id=%s", request_id)
         raise HTTPException(
             status_code=503,
             detail=f"history unavailable (request_id={request_id})",
         ) from exc
-    return HistoryResponse(summary=summary, items=items)
+    public_items = [item.model_copy(update={"query": ""}) for item in items]
+    return HistoryResponse(summary=summary, items=public_items)
 
 
 async def _iterate_stream(
@@ -348,6 +315,26 @@ async def _enforce_rate_limit(
             detail="rate limit exceeded",
             headers={"Retry-After": str(retry_after)},
         )
+
+
+async def _enforce_chat_rate_limit(request: Request, settings: Settings) -> None:
+    await _enforce_rate_limit(
+        request,
+        "chat-global",
+        settings.global_chat_requests_per_minute,
+    )
+    await _enforce_rate_limit(
+        request,
+        f"chat-ip:{client_address(request)}",
+        settings.chat_requests_per_minute,
+    )
+
+
+def _read_history(
+    store: HistoryStore,
+    limit: int,
+) -> tuple[HistorySummary, list[HistoryItem]]:
+    return store.summary(), store.recent(limit)
 
 
 async def _record(

@@ -1,5 +1,7 @@
 # Production Hardening Design
 
+> The session-auth design below is historical and is superseded by `../public-access-refresh/design.md` from 0.3.0 onward.
+
 ## Architecture
 
 - `security.py` owns access-key exchange, signed sessions, rate limiting, and
@@ -42,4 +44,3 @@ the existing independent CloudBase app and backend URL injection.
 - Frontend tests for auth headers, complete streams, truncated streams, and aborts.
 - Production build, dependency audit, browser login/error-flow smoke test, and
   deployed endpoint verification.
-

@@ -88,3 +88,59 @@ def test_complex_task_is_not_downgraded_by_short_output_instruction() -> None:
 
 def test_chinese_system_prompt_does_not_reclassify_english_user_text() -> None:
     assert classify_chinese("Say hello", "你是一个代码助手") is None
+
+
+def test_system_prompt_does_not_inflate_simple_chinese_request() -> None:
+    result = classify_chinese(
+        "你好",
+        "你是资深 Python 架构师，负责设计、实现、调试和优化代码",
+    )
+
+    assert result is not None
+    assert result.tier is Tier.SIMPLE
+
+
+def test_constraint_dense_delivery_plan_is_complex() -> None:
+    result = classify_chinese(
+        "帮我写一份上线方案，要求零停机、可回滚、兼容旧客户端，同时给出监控指标和验收标准。"
+    )
+
+    assert result is not None
+    assert result.tier is Tier.COMPLEX
+    assert any(signal.startswith("constraints") for signal in result.signals)
+    assert any(signal.startswith("deliverables") for signal in result.signals)
+
+
+def test_bounded_multi_variant_rewrite_is_medium() -> None:
+    result = classify_chinese(
+        "把这段文字改写成正式语气，同时保留原意，不超过200字，并给出三个版本。"
+    )
+
+    assert result is not None
+    assert result.tier is Tier.MEDIUM
+
+
+def test_scale_and_negative_constraints_are_complex() -> None:
+    result = classify_chinese(
+        "不要使用 Redis，也不能改数据库表结构，请给出能支撑每秒一万请求的方案。"
+    )
+
+    assert result is not None
+    assert result.tier is Tier.COMPLEX
+    assert "scale requirement" in result.signals
+
+
+def test_multi_criteria_decision_uses_reasoning() -> None:
+    result = classify_chinese(
+        "比较三种实现方案，从成本、延迟、可靠性和维护复杂度评估，并给出推荐。"
+    )
+
+    assert result is not None
+    assert result.tier is Tier.REASONING
+
+
+def test_diagnostic_plan_uses_reasoning() -> None:
+    result = classify_chinese("分析支付偶发重复扣款的可能原因，给出排查顺序、验证方法和修复方案。")
+
+    assert result is not None
+    assert result.tier is Tier.REASONING

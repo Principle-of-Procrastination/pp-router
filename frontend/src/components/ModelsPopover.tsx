@@ -32,7 +32,7 @@ export default function ModelsPopover({
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 rounded-full border border-line bg-surface/70 px-3.5 py-1.5 text-xs text-fg-muted transition-colors hover:border-accent/30 hover:text-fg"
+        className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full border border-line bg-surface/70 px-3.5 py-1.5 text-xs text-fg-muted transition-colors hover:border-accent/30 hover:text-fg"
       >
         模型
         <span className="font-mono text-[10px] text-fg-dim">{models.length}</span>
