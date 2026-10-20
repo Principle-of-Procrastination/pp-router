@@ -16,6 +16,7 @@
 ## 公开访问边界
 
 - `/models`、`/chat`、`/chat/stream`、`/history` 无需登录；仓库不再提供访问密钥或会话接口。
+- 新增的 `/v1/models`、`/v1/chat/completions` 面向服务端集成，必须配置独立的 `PPROUTER_API_KEY` 并使用 Bearer 认证。它们默认关闭，不改变已有公开接口。
 - CORS 只允许显式来源；生产默认不公开 OpenAPI 和 Swagger UI。
 - 聊天同时受单 IP 与全局滑动窗口限流，读取接口也有限流；模型调用有全局并发、单次输入、输出 token 和总时长上限。
 - 上游错误只向客户端返回稳定错误码和 request ID，详细异常写入 CloudRun 日志。
@@ -51,6 +52,7 @@ Vite 将 `/api/*` 代理到 `127.0.0.1:4000`。打开 `http://localhost:5173` �
 |---|---:|---|---|
 | `STEP_API_KEY` | 是 | - | StepFun 上游凭据 |
 | `BIGMODEL_API_KEY` | 是 | - | 智谱上游凭据 |
+| `PPROUTER_API_KEY` | `/v1/*` | 未设置时关闭 | 32–512 个可打印 ASCII 字符的随机密钥，仅服务端使用 |
 | `CORS_ORIGINS` | 否 | 本地与线上控制台 | 逗号分隔的精确 origin，禁止 `*` |
 | `CHAT_REQUESTS_PER_MINUTE` | 否 | `30` | 单 IP 每分钟聊天上限 |
 | `GLOBAL_CHAT_REQUESTS_PER_MINUTE` | 否 | `120` | 单实例每分钟聊天总上限 |
@@ -80,6 +82,75 @@ curl -sSN -X POST http://127.0.0.1:4000/chat/stream \
 
 `GET /history?limit=50` 的 `limit` 范围为 1–100，汇总由 CloudBase 聚合查询完成，公开响应不包含原始 query。
 
+## PP Code / OpenAI-compatible integration
+
+The new API reuses this repository's `DifficultyRouter`, Chinese complexity rules,
+LiteLLM model groups, provider credentials, fallbacks, rate limits, concurrency gate,
+timeouts, and usage history. It does not call a second routing service.
+
+1. Generate a random server-to-server credential with
+   `python -c 'import secrets; print(secrets.token_urlsafe(32))'` and set it as
+   `PPROUTER_API_KEY` on PP Router and `PP_ROUTER_API_KEY` on the PP Code backend. Keep it out of browser
+   bundles, `VITE_*` variables, and checked-in config. Blank disables `/v1/*` with
+   HTTP 503; an invalid configured key prevents startup.
+2. Run PP Router as above, then use `http://127.0.0.1:4000/v1` as PP Code's
+   OpenAI-compatible `baseURL`. For a remote router, use its HTTPS origin plus `/v1`.
+3. Select `auto` to use PP's existing difficulty classifier, or select
+   `step-3.7-flash`, `glm-4.7`, or `glm-5.1` to force one configured group. The
+   engine's existing fallback policy still applies. Provider availability and model
+   capabilities depend on the server's configured accounts.
+
+Example PP Code backend configuration:
+
+```json
+{
+  "providers": {
+    "pp": {
+      "package": "@ai-sdk/openai-compatible",
+      "name": "PP Router",
+      "settings": {
+        "baseURL": "http://127.0.0.1:4000/v1",
+        "apiKey": "{env:PP_ROUTER_API_KEY}"
+      },
+      "models": {
+        "auto": {
+          "name": "PP Auto",
+          "capabilities": { "tools": true, "input": ["text"], "output": ["text"] },
+          "limit": { "context": 16384, "output": 4096 }
+        }
+      }
+    }
+  },
+  "model": "pp/auto"
+}
+```
+
+`GET /v1/models` returns those four public IDs in the OpenAI list format.
+`POST /v1/chat/completions` accepts text messages with the `developer`, `system`,
+`user`, `assistant`, and `tool` roles, function-tool definitions, `tool_choice`,
+and `parallel_tool_calls`. Assistant tool calls and tool results are forwarded
+without converting them into chat text. Text content arrays are also supported.
+For classification only, developer text is treated as system guidance; tool outputs
+are excluded. Streaming preserves OpenAI tool-call deltas and finishes with
+`data: [DONE]`. Set `stream_options.include_usage` to receive usage chunks.
+
+Assistant `reasoning_content` is retained for tool continuations. The bounded subset
+supports one completion (`n=1`), sampling options, stop strings, an optional opaque
+`user` ID, and `text`/`json_object`/`json_schema` response formats. Requests are limited to 1 MiB, 512
+messages, and 128 function tools. Unsupported fields, images, audio, and other
+multimodal inputs are rejected with HTTP 400 instead of being silently removed.
+Clients cannot supply provider keys, base URLs, or arbitrary model IDs. Output
+tokens are capped by `MAX_OUTPUT_TOKENS` even if the client requests more.
+Errors use the OpenAI `error` envelope with a request ID; streamed upstream errors
+are followed by `[DONE]`. Disconnects and timeouts cancel pending reads and close
+upstream streams.
+
+Only model, routing, and token metadata from this API enters the existing history
+store; code prompts, tool arguments, tool outputs, and response text are not saved.
+The existing public history endpoint continues to expose aggregate usage metadata.
+These are source changes: an existing CloudRun deployment must be updated and
+configured before its `/v1/*` routes become available.
+
 ## 测试
 
 ```bash
@@ -108,6 +179,7 @@ CloudRun 直接从仓库根目录的 `Dockerfile` 构建，`requirements.txt` �
 - `STEP_API_KEY`
 - `BIGMODEL_API_KEY`
 - `CLOUDBASE_API_KEY`
+- `PPROUTER_API_KEY`（需要启用 `/v1/*` 时）
 
 非 secret 配置包括 `CLOUDBASE_ENV_ID=principleprocrastination-d6cb34f`、集合名和精确 CORS origin。后端部署完成后，以 `VITE_API_BASE` 注入后端 URL 构建并更新现有 `pprouter-web` 应用。
 
