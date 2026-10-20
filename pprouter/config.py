@@ -1,5 +1,6 @@
 import os
-from dataclasses import dataclass
+import hashlib
+from dataclasses import dataclass, field
 from enum import Enum
 
 
@@ -85,6 +86,8 @@ class Settings:
     cloudbase_env_id: str | None
     cloudbase_api_key: str | None
     cloudbase_history_collection: str
+    # Store only a digest, and keep credentials out of dataclass repr/logs.
+    openai_api_key_hash: bytes | None = field(default=None, repr=False)
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -111,6 +114,7 @@ class Settings:
                 "CLOUDBASE_HISTORY_COLLECTION", "pprouter_history"
             ).strip()
             or "pprouter_history",
+            openai_api_key_hash=_openai_api_key_hash(),
         )
 
 
@@ -144,6 +148,15 @@ def docs_enabled() -> bool:
 def _optional_env(name: str) -> str | None:
     value = os.environ.get(name, "").strip()
     return value or None
+
+
+def _openai_api_key_hash() -> bytes | None:
+    key = os.environ.get("PPROUTER_API_KEY", "")
+    if not key:
+        return None
+    if not 32 <= len(key) <= 512 or any(not 33 <= ord(c) <= 126 for c in key):
+        raise RuntimeError("PPROUTER_API_KEY must be 32–512 ASCII characters without whitespace")
+    return hashlib.sha256(key.encode()).digest()
 
 
 def _int_env(name: str, default: int, minimum: int, maximum: int) -> int:

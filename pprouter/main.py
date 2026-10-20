@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from pprouter import api
+from pprouter import api, openai_api
 from pprouter.config import Settings, docs_enabled, get_cors_origins
 from pprouter.history import CloudBaseHistoryStore, SQLiteHistoryStore
 from pprouter.router_engine import build_router
@@ -69,3 +69,4 @@ async def attach_request_id(request: Request, call_next):
 
 
 app.include_router(api.router)
+app.include_router(openai_api.router)

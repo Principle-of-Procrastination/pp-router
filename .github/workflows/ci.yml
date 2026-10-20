@@ -2,8 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [master, opencode-compat]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   backend:
