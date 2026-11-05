@@ -1,0 +1,56 @@
+server {
+    listen 80 default_server;
+    server_name ${PUBLIC_HOST};
+    access_log off;
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/acme;
+        try_files $uri =404;
+    }
+    location / { return 308 https://${PUBLIC_HOST}$request_uri; }
+}
+
+server {
+    listen 443 ssl default_server;
+    server_name ${PUBLIC_HOST};
+    ssl_certificate /etc/letsencrypt/live/${PUBLIC_HOST}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${PUBLIC_HOST}/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:TLS:10m;
+    root /usr/share/nginx/html;
+    index index.html;
+    client_max_body_size 20m;
+    access_log off;
+    resolver 127.0.0.11 valid=10s ipv6=off;
+    set $pp_backend http://gateway:4000;
+
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy no-referrer always;
+    add_header X-Frame-Options DENY always;
+
+    location /api/ {
+        rewrite ^/api/(.*)$ /$1 break;
+        proxy_pass $pp_backend;
+        include /etc/nginx/pp-router-proxy.conf;
+    }
+    location /v1/ {
+        proxy_pass $pp_backend;
+        include /etc/nginx/pp-router-proxy.conf;
+    }
+    location /internal/v1/ {
+        proxy_pass $pp_backend;
+        include /etc/nginx/pp-router-proxy.conf;
+    }
+    location = /health {
+        proxy_pass $pp_backend;
+        include /etc/nginx/pp-router-proxy.conf;
+    }
+    location ~ /\. { deny all; }
+    location /assets/ {
+        try_files $uri =404;
+        expires 1y;
+    }
+    location / {
+        try_files $uri $uri/ /index.html;
+        expires -1;
+    }
+}

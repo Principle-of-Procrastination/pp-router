@@ -1,0 +1,9 @@
+[Unit]
+Description=Renew pp-router HTTPS certificate and reload Nginx
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh /opt/pp-router/current/deploy/renew-cert.sh
+TimeoutStartSec=600

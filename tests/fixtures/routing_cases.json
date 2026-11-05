@@ -1,0 +1,282 @@
+[
+  {
+    "id": "general-1",
+    "task": "general",
+    "query": "把“会议改到周三下午两点”翻译成英文，只要译文。",
+    "acceptable_models": [
+      "deepseek-flash"
+    ],
+    "image": false
+  },
+  {
+    "id": "general-2",
+    "task": "general",
+    "query": "写一条简短的欢迎消息，给新注册的企业用户。",
+    "acceptable_models": [
+      "deepseek-flash"
+    ],
+    "image": false
+  },
+  {
+    "id": "general-3",
+    "task": "general",
+    "query": "请用三句话总结：产品周一发布，周二修复登录故障，周三新增导出功能。",
+    "acceptable_models": [
+      "deepseek-flash"
+    ],
+    "image": false
+  },
+  {
+    "id": "general-4",
+    "task": "general",
+    "query": "从这段话提取公司名：张三在星河科技任职。",
+    "acceptable_models": [
+      "deepseek-flash"
+    ],
+    "image": false
+  },
+  {
+    "id": "general-5",
+    "task": "general",
+    "query": "解释一下 token 是什么，面向没有技术背景的人。",
+    "acceptable_models": [
+      "deepseek-flash"
+    ],
+    "image": false
+  },
+  {
+    "id": "reasoning-1",
+    "task": "reasoning",
+    "query": "三个盒子标签都贴错了，分别标苹果、橘子、混合，只能取一个水果。证明如何正确贴标签。",
+    "acceptable_models": [
+      "deepseek-v4-pro",
+      "kimi-k3.1-pro"
+    ],
+    "image": false
+  },
+  {
+    "id": "reasoning-2",
+    "task": "reasoning",
+    "query": "推导泊松分布的期望和方差，并说明每一步使用的恒等式。",
+    "acceptable_models": [
+      "deepseek-v4-pro",
+      "kimi-k3.1-pro"
+    ],
+    "image": false
+  },
+  {
+    "id": "reasoning-3",
+    "task": "reasoning",
+    "query": "在预算固定且需求不确定的条件下，分析自建与采购服务的决策边界，给出敏感性分析。",
+    "acceptable_models": [
+      "deepseek-v4-pro",
+      "kimi-k3.1-pro"
+    ],
+    "image": false
+  },
+  {
+    "id": "reasoning-4",
+    "task": "reasoning",
+    "query": "证明对于正数 a,b,c，(a+b+c)(1/a+1/b+1/c)不小于9，解释等号条件。",
+    "acceptable_models": [
+      "deepseek-v4-pro",
+      "kimi-k3.1-pro"
+    ],
+    "image": false
+  },
+  {
+    "id": "reasoning-5",
+    "task": "reasoning",
+    "query": "已知检测灵敏度99%、特异度95%、患病率1%，推导阳性后的后验概率并讨论基率影响。",
+    "acceptable_models": [
+      "deepseek-v4-pro",
+      "kimi-k3.1-pro"
+    ],
+    "image": false
+  },
+  {
+    "id": "coding-1",
+    "task": "coding",
+    "query": "实现一个支持取消与背压的异步 Python SSE 代理，处理连接关闭与资源释放。",
+    "acceptable_models": [
+      "kimi-k3.1-pro"
+    ],
+    "image": false
+  },
+  {
+    "id": "coding-2",
+    "task": "coding",
+    "query": "帮我定位 React 并发请求覆盖新状态的问题，并给出可运行的修复与测试。",
+    "acceptable_models": [
+      "kimi-k3.1-pro"
+    ],
+    "image": false
+  },
+  {
+    "id": "coding-3",
+    "task": "coding",
+    "query": "设计 TypeScript 类型安全的工具调用执行器，处理多工具并发与失败聚合。",
+    "acceptable_models": [
+      "kimi-k3.1-pro"
+    ],
+    "image": false
+  },
+  {
+    "id": "coding-4",
+    "task": "coding",
+    "query": "将一段同步数据库事务流程改成异步 SQLAlchemy，要求避免会话跨请求共享。",
+    "acceptable_models": [
+      "kimi-k3.1-pro"
+    ],
+    "image": false
+  },
+  {
+    "id": "coding-5",
+    "task": "coding",
+    "query": "实现有环有向图的强连通分量算法，并用复杂示例验证时间复杂度。",
+    "acceptable_models": [
+      "kimi-k3.1-pro"
+    ],
+    "image": false
+  },
+  {
+    "id": "agent-1",
+    "task": "agent",
+    "query": "使用给定的库存查询和订单工具，先检查库存，再建立待确认订单。不要虚构结果。",
+    "acceptable_models": [
+      "kimi-k3.1-pro"
+    ],
+    "image": false
+  },
+  {
+    "id": "agent-2",
+    "task": "agent",
+    "query": "通过搜索工具查找最新信息，比较来源冲突，再调用报告工具保存结论。",
+    "acceptable_models": [
+      "kimi-k3.1-pro"
+    ],
+    "image": false
+  },
+  {
+    "id": "agent-3",
+    "task": "agent",
+    "query": "先调用客户查询工具，再用合同检索工具核对授权范围，返回需要跟进的事项。",
+    "acceptable_models": [
+      "kimi-k3.1-pro"
+    ],
+    "image": false
+  },
+  {
+    "id": "agent-4",
+    "task": "agent",
+    "query": "需要多步骤执行：读取工单、查询相关服务健康状态、根据结果分配工单给对应团队。",
+    "acceptable_models": [
+      "kimi-k3.1-pro"
+    ],
+    "image": false
+  },
+  {
+    "id": "agent-5",
+    "task": "agent",
+    "query": "请作为执行助手规划并调用工具，按读取、验证、预览的顺序处理批量数据更新。",
+    "acceptable_models": [
+      "kimi-k3.1-pro"
+    ],
+    "image": false
+  },
+  {
+    "id": "vision-1",
+    "task": "vision",
+    "query": "分析这张图片的主要颜色，简短回答。",
+    "acceptable_models": [
+      "kimi-k3.1-pro",
+      "deepseek-flash"
+    ],
+    "image": true
+  },
+  {
+    "id": "vision-2",
+    "task": "vision",
+    "query": "描述上传图片中的形状与空间布局。",
+    "acceptable_models": [
+      "kimi-k3.1-pro",
+      "deepseek-flash"
+    ],
+    "image": true
+  },
+  {
+    "id": "vision-3",
+    "task": "vision",
+    "query": "检查图片是否包含文字；没有的话明确说明。",
+    "acceptable_models": [
+      "kimi-k3.1-pro",
+      "deepseek-flash"
+    ],
+    "image": true
+  },
+  {
+    "id": "vision-4",
+    "task": "vision",
+    "query": "从图像理解的角度，描述这张图片中的视觉元素。",
+    "acceptable_models": [
+      "kimi-k3.1-pro",
+      "deepseek-flash"
+    ],
+    "image": true
+  },
+  {
+    "id": "vision-5",
+    "task": "vision",
+    "query": "比较图片前景和背景的颜色差异，不要推测画面之外的信息。",
+    "acceptable_models": [
+      "kimi-k3.1-pro",
+      "deepseek-flash"
+    ],
+    "image": true
+  },
+  {
+    "id": "structured-1",
+    "task": "structured",
+    "query": "请把一条客户反馈转换成严格结构化 JSON，字段包含情绪、优先级和产品模块。反馈：登录慢导致无法提交。",
+    "acceptable_models": [
+      "kimi-k3.1-pro"
+    ],
+    "image": false
+  },
+  {
+    "id": "structured-2",
+    "task": "structured",
+    "query": "请设计并输出机器可验证的 JSON 对象，包含任务依赖与时间安排，不输出其他文字。",
+    "acceptable_models": [
+      "kimi-k3.1-pro"
+    ],
+    "image": false
+  },
+  {
+    "id": "structured-3",
+    "task": "structured",
+    "query": "将“甲公司买了3台设备、乙公司买了5台”转换成严格格式的 JSON 记录数组，只返回 JSON。",
+    "acceptable_models": [
+      "kimi-k3.1-pro"
+    ],
+    "image": false
+  },
+  {
+    "id": "structured-4",
+    "task": "structured",
+    "query": "输出结构化 JSON 报告，字段固定为 summary、risks 和 next_actions，分析本周延期事项。",
+    "acceptable_models": [
+      "kimi-k3.1-pro"
+    ],
+    "image": false
+  },
+  {
+    "id": "structured-5",
+    "task": "structured",
+    "query": "将以下表单信息规范化为 JSON 并确保所有字段类型一致：姓名张三，年龄28，已同意服务。",
+    "acceptable_models": [
+      "kimi-k3.1-pro"
+    ],
+    "image": false
+  }
+]

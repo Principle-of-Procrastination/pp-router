@@ -1,168 +1,60 @@
+from dataclasses import dataclass, field
+from pathlib import Path
 import os
-from dataclasses import dataclass
-from enum import Enum
+
+from dotenv import load_dotenv
+
+ROOT = Path(__file__).resolve().parent.parent
 
 
-class Tier(str, Enum):
-    SIMPLE = "SIMPLE"
-    MEDIUM = "MEDIUM"
-    COMPLEX = "COMPLEX"
-    REASONING = "REASONING"
-
-
-@dataclass(frozen=True, slots=True)
-class BuiltinModel:
-    id: str
-    litellm_model: str
-    tiers: tuple[Tier, ...]
-    api_base: str
-    api_key_env: str
-
-
-# OpenAI-compatible endpoints. litellm has no native provider for these vendors,
-# so every model is called via the `openai/` prefix + its own api_base/api_key.
-STEPFUN_API_BASE = "https://api.stepfun.com/v1"
-BIGMODEL_API_BASE = "https://open.bigmodel.cn/api/paas/v4"
-BUILTIN_MODELS: tuple[BuiltinModel, ...] = (
-    BuiltinModel(
-        "step-3.7-flash",
-        "openai/step-3.7-flash",
-        (Tier.SIMPLE,),
-        STEPFUN_API_BASE,
-        "STEP_API_KEY",
-    ),
-    BuiltinModel(
-        "glm-4.7",
-        "openai/glm-4.7",
-        (Tier.MEDIUM,),
-        BIGMODEL_API_BASE,
-        "BIGMODEL_API_KEY",
-    ),
-    BuiltinModel(
-        "glm-5.1",
-        "openai/glm-5.1",
-        (Tier.COMPLEX, Tier.REASONING),
-        BIGMODEL_API_BASE,
-        "BIGMODEL_API_KEY",
-    ),
-)
-
-TIER_MAP: dict[Tier, str] = {
-    Tier.SIMPLE: "step-3.7-flash",
-    Tier.MEDIUM: "glm-4.7",
-    Tier.COMPLEX: "glm-5.1",
-    Tier.REASONING: "glm-5.1",
-}
-
-DEFAULT_GROUP = "step-3.7-flash"
-
-# Keep non-reasoning tiers responsive. GLM supports disabling thinking; StepFun
-# 3.7 Flash only supports lowering reasoning effort, not a true off switch.
-MODEL_COMPLETION_KWARGS = {
-    "step-3.7-flash": {"extra_body": {"reasoning_effort": "low"}},
-    "glm-4.7": {"extra_body": {"thinking": {"type": "disabled"}}},
-    "glm-5.1": {"extra_body": {"thinking": {"type": "disabled"}}},
-}
-
-DEFAULT_CORS_ORIGINS = (
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "https://pprouter-web-principleprocrastination-d6cb34f.webapps.tcloudbase.com",
-)
-
-
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class Settings:
-    cors_origins: tuple[str, ...]
-    chat_requests_per_minute: int
-    global_chat_requests_per_minute: int
-    read_requests_per_minute: int
-    max_concurrent_requests: int
-    upstream_timeout_seconds: float
-    stream_heartbeat_seconds: float
-    max_output_tokens: int
-    history_path: str
-    cloudbase_env_id: str | None
-    cloudbase_api_key: str | None
-    cloudbase_history_collection: str
+    database_path: Path = field(default_factory=lambda: ROOT / "data/pprouter.db")
+    deepseek_api_key: str = ""
+    moonshot_api_key: str = ""
+    allowed_origins: tuple[str, ...] = (
+        "http://127.0.0.1:5173",
+        "http://localhost:5173",
+        "http://127.0.0.1:4000",
+        "http://localhost:4000",
+    )
+    timeout_seconds: float = 180
+    router_timeout_seconds: float = 5
+    max_concurrent: int = 16
+    cookie_secure: bool = False
+    session_seconds: int = 8 * 3600
+    max_body_bytes: int = 20 * 1024 * 1024
+
+    @property
+    def database_url(self) -> str:
+        return f"sqlite+aiosqlite:///{self.database_path.resolve()}"
+
+    def configured(self, provider: str) -> bool:
+        return bool(self.deepseek_api_key if provider == "deepseek" else self.moonshot_api_key)
 
     @classmethod
-    def from_env(cls) -> "Settings":
-        cloudbase_env_id = _optional_env("CLOUDBASE_ENV_ID")
-        cloudbase_api_key = _optional_env("CLOUDBASE_API_KEY")
-        if bool(cloudbase_env_id) != bool(cloudbase_api_key):
-            raise RuntimeError("CLOUDBASE_ENV_ID and CLOUDBASE_API_KEY must be configured together")
-
-        return cls(
-            cors_origins=get_cors_origins(),
-            chat_requests_per_minute=_int_env("CHAT_REQUESTS_PER_MINUTE", 30, 1, 600),
-            global_chat_requests_per_minute=_int_env(
-                "GLOBAL_CHAT_REQUESTS_PER_MINUTE", 120, 1, 10_000
-            ),
-            read_requests_per_minute=_int_env("READ_REQUESTS_PER_MINUTE", 120, 1, 10_000),
-            max_concurrent_requests=_int_env("MAX_CONCURRENT_REQUESTS", 4, 1, 64),
-            upstream_timeout_seconds=_float_env("UPSTREAM_TIMEOUT_SECONDS", 180.0, 10.0, 900.0),
-            stream_heartbeat_seconds=_float_env("STREAM_HEARTBEAT_SECONDS", 15.0, 1.0, 60.0),
-            max_output_tokens=_int_env("MAX_OUTPUT_TOKENS", 4096, 128, 32_768),
-            history_path=os.environ.get("HISTORY_PATH", "history.db").strip() or "history.db",
-            cloudbase_env_id=cloudbase_env_id,
-            cloudbase_api_key=cloudbase_api_key,
-            cloudbase_history_collection=os.environ.get(
-                "CLOUDBASE_HISTORY_COLLECTION", "pprouter_history"
-            ).strip()
-            or "pprouter_history",
+    def from_env(cls):
+        load_dotenv(ROOT / ".env")
+        path = Path(os.getenv("PPROUTER_DATABASE_PATH", "data/pprouter.db"))
+        if not path.is_absolute():
+            path = ROOT / path
+        origins = os.getenv("PPROUTER_ALLOWED_ORIGINS", "")
+        settings = cls(
+            database_path=path,
+            deepseek_api_key=os.getenv("DEEPSEEK_API_KEY", "").strip(),
+            moonshot_api_key=os.getenv("MOONSHOT_API_KEY", "").strip(),
+            allowed_origins=tuple(x.strip().rstrip("/") for x in origins.split(",") if x.strip())
+            if origins
+            else cls().allowed_origins,
+            timeout_seconds=float(os.getenv("PPROUTER_TIMEOUT_SECONDS", "180")),
+            router_timeout_seconds=float(os.getenv("PPROUTER_ROUTER_TIMEOUT_SECONDS", "5")),
+            max_concurrent=int(os.getenv("PPROUTER_MAX_CONCURRENT", "16")),
+            cookie_secure=os.getenv("PPROUTER_COOKIE_SECURE", "false").lower() == "true",
         )
-
-
-def get_api_key(env_name: str) -> str:
-    key = os.environ.get(env_name, "").strip()
-    if not key:
-        raise RuntimeError(f"environment variable {env_name} is not set")
-    return key
-
-
-def get_cors_origins() -> tuple[str, ...]:
-    raw = os.environ.get("CORS_ORIGINS", "")
-    if not raw.strip():
-        return DEFAULT_CORS_ORIGINS
-    origins = tuple(
-        dict.fromkeys(part.strip().rstrip("/") for part in raw.split(",") if part.strip())
-    )
-    if not origins or "*" in origins:
-        raise RuntimeError("CORS_ORIGINS must contain explicit origins, not '*'")
-    return origins
-
-
-def docs_enabled() -> bool:
-    return os.environ.get("PPROUTER_DOCS_ENABLED", "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-    }
-
-
-def _optional_env(name: str) -> str | None:
-    value = os.environ.get(name, "").strip()
-    return value or None
-
-
-def _int_env(name: str, default: int, minimum: int, maximum: int) -> int:
-    raw = os.environ.get(name, str(default)).strip()
-    try:
-        value = int(raw)
-    except ValueError as exc:
-        raise RuntimeError(f"environment variable {name} must be an integer") from exc
-    if not minimum <= value <= maximum:
-        raise RuntimeError(f"environment variable {name} must be between {minimum} and {maximum}")
-    return value
-
-
-def _float_env(name: str, default: float, minimum: float, maximum: float) -> float:
-    raw = os.environ.get(name, str(default)).strip()
-    try:
-        value = float(raw)
-    except ValueError as exc:
-        raise RuntimeError(f"environment variable {name} must be a number") from exc
-    if not minimum <= value <= maximum:
-        raise RuntimeError(f"environment variable {name} must be between {minimum} and {maximum}")
-    return value
+        if "*" in settings.allowed_origins:
+            raise ValueError("Use explicit allowed origins")
+        if settings.timeout_seconds <= 0 or settings.router_timeout_seconds <= 0:
+            raise ValueError("Timeouts must be positive")
+        if settings.max_concurrent < 1:
+            raise ValueError("Concurrency must be positive")
+        return settings
