@@ -1,57 +1,45 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
+import { formatNumber, readSSE } from "./api";
 
-import { streamChat } from "./api";
-
-
-function streamResponse(events: string): Response {
-  const encoder = new TextEncoder();
+function stream(parts: string[]) {
   return new Response(
     new ReadableStream({
-      start(controller) {
-        controller.enqueue(encoder.encode(events));
-        controller.close();
+      start(c) {
+        for (const p of parts) c.enqueue(new TextEncoder().encode(p));
+        c.close();
       },
     }),
-    { status: 200 },
   );
 }
-
-
-describe("streamChat", () => {
-  it("uses the public API and requires a done event", async () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
-    fetchMock.mockResolvedValueOnce(
-      streamResponse(
-        'data: {"type":"delta","content":"ok"}\n\n' +
-          'data: {"type":"done","model":"glm-4.7","usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}\n\n',
-      ),
+describe("OpenAI stream consumption", () => {
+  it("handles split frames, heartbeats and final usage", async () => {
+    const chunks: any[] = [];
+    await readSSE(
+      stream([
+        ': heartbeat\n\ndata: {"choices":[',
+        '{"delta":{"content":"你好"}}]}\n',
+        '\ndata: {"choices":[],"usage":{"total_tokens":3}}\n\ndata: [DONE]\n\n',
+      ]),
+      (c) => chunks.push(c),
     );
-    const pieces: string[] = [];
-
-    await streamChat(
-      { messages: [{ role: "user", content: "hi" }] },
-      { onDelta: (text) => pieces.push(text), onDone: () => undefined },
-    );
-
-    expect(pieces).toEqual(["ok"]);
-    const headers = new Headers(fetchMock.mock.calls[0][1].headers);
-    expect(headers.get("Authorization")).toBeNull();
-    expect(headers.get("Content-Type")).toBe("application/json");
+    expect(chunks[0].choices[0].delta.content).toBe("你好");
+    expect(chunks[1].usage.total_tokens).toBe(3);
   });
-
-  it("rejects a truncated stream", async () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
-    fetchMock.mockResolvedValueOnce(
-      streamResponse('data: {"type":"delta","content":"partial"}\n\n'),
-    );
-
+  it("does not treat premature EOF as success", async () => {
     await expect(
-      streamChat(
-        { messages: [{ role: "user", content: "hi" }] },
-        { onDelta: () => undefined, onDone: () => undefined },
+      readSSE(stream(['data: {"choices":[]}\n\n']), () => {}),
+    ).rejects.toThrow("响应中断");
+  });
+  it("shows structured stream errors", async () => {
+    await expect(
+      readSSE(
+        stream(['data: {"error":{"message":"upstream timeout"}}\n\n']),
+        () => {},
       ),
-    ).rejects.toThrow("stream ended before completion");
+    ).rejects.toThrow("upstream timeout");
+  });
+  it("distinguishes unknown usage from a known zero", () => {
+    expect(formatNumber(null)).toBe("—");
+    expect(formatNumber(0)).toBe("0");
   });
 });
