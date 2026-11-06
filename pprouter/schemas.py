@@ -9,6 +9,8 @@ from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from pprouter.limits import OUTPUT_TOKENS
+
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -199,8 +201,8 @@ class ChatRequest(StrictModel):
     n: Literal[1] = 1
     temperature: float | None = Field(default=None, ge=0, le=2)
     top_p: float | None = Field(default=None, gt=0, le=1)
-    max_tokens: int | None = Field(default=None, ge=1, le=32768)
-    max_completion_tokens: int | None = Field(default=None, ge=1, le=32768)
+    max_tokens: int | None = Field(default=None, ge=1, le=OUTPUT_TOKENS)
+    max_completion_tokens: int | None = Field(default=None, ge=1, le=OUTPUT_TOKENS)
     tools: list[ToolSpec] | None = Field(default=None, min_length=1, max_length=64)
     tool_choice: Literal["auto", "none", "required"] | NamedChoice | None = None
     response_format: ResponseFormat | None = None

@@ -118,7 +118,7 @@ async def run(args):
                     response = await admin.post(
                         "/admin/v1/routing/preview",
                         json={
-                            "key_id": key_ids["vision" if case["image"] else "chat"],
+                            "key_id": key_ids["pp_cad" if case["image"] else "pp_chat"],
                             "request": {"model": "auto", "messages": [message], "max_tokens": 256},
                         },
                     )
@@ -179,7 +179,7 @@ async def run(args):
             else:
                 for model in ("deepseek-flash", "deepseek-v4-pro", "kimi-k3.1-pro"):
                     await completion(
-                        "chat",
+                        "pp_chat",
                         model + "/text",
                         model=model,
                         messages=[text_message("请只回复 OK。")],
@@ -187,7 +187,7 @@ async def run(args):
                         max_tokens=256,
                     )
                 await completion(
-                    "chat",
+                    "pp_chat",
                     "auto",
                     model="auto",
                     messages=[text_message("请翻译为英文：你好，世界。")],
@@ -195,7 +195,7 @@ async def run(args):
                 )
                 for model in ("deepseek-flash", "kimi-k3.1-pro"):
                     await completion(
-                        "vision",
+                        "pp_cad",
                         model + "/image",
                         model=model,
                         messages=[image_message("图中主要是什么颜色？")],
@@ -203,7 +203,7 @@ async def run(args):
                     )
                     if model + "/stream" in completed_labels:
                         continue
-                    stream = await clients["chat"].chat.completions.create(
+                    stream = await clients["pp_chat"].chat.completions.create(
                         model=model,
                         messages=[text_message("请回复一声你好。")],
                         max_tokens=256,
@@ -220,7 +220,7 @@ async def run(args):
                     assert usage is not None, model + ": stream usage missing"
                     outcomes.append({"case": model + "/stream", "tokens": usage.total_tokens})
                 result = await completion(
-                    "chat",
+                    "pp_chat",
                     "json-object",
                     model="deepseek-flash",
                     messages=[text_message("仅返回 JSON 对象，字段 ok 的值为 true。")],
@@ -230,7 +230,7 @@ async def run(args):
                 if result is not None:
                     assert json.loads(result.choices[0].message.content)["ok"] is True
                 result = await completion(
-                    "chat",
+                    "pp_chat",
                     "json-schema",
                     model="auto",
                     messages=[text_message("请返回 ok 为 true 的 JSON。")],
@@ -270,7 +270,7 @@ async def run(args):
                     ]
                     messages = [text_message("请通过 get_weather 工具查询上海天气，然后简短转述。")]
                     first = await completion(
-                        "agent",
+                        "pp_code",
                         model + "/tool-start",
                         model=model,
                         messages=messages,
@@ -303,7 +303,7 @@ async def run(args):
                             }
                         )
                     final = await completion(
-                        "agent",
+                        "pp_code",
                         model + "/tool-resume",
                         model="auto",
                         messages=messages,

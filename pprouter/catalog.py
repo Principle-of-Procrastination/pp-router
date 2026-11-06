@@ -1,3 +1,13 @@
+APPLICATIONS = [
+    dict(
+        code="pp_code",
+        name="PP Code",
+        description="编程、代码审查、工程理解及通过工具完成开发任务",
+    ),
+    dict(code="pp_chat", name="PP Chat", description="对话、问答、写作、摘要及通用 AI 助手"),
+    dict(code="pp_cad", name="PP CAD", description="CAD 绘图、图纸理解、设计辅助及相关业务任务"),
+]
+
 MODELS = [
     dict(id="deepseek-flash", provider="deepseek", vision=True, formats=["text", "json_object"]),
     dict(id="deepseek-v4-pro", provider="deepseek", vision=False, formats=["text", "json_object"]),

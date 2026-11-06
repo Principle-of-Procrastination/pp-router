@@ -6,6 +6,7 @@ import openai
 from openai import AsyncOpenAI
 
 from pprouter.errors import GatewayError
+from pprouter.limits import CONTEXT_TOKENS, OUTPUT_TOKENS
 from pprouter.schemas import ChatRequest, NamedChoice
 
 
@@ -177,9 +178,9 @@ def compatible(model, req, grant) -> bool:
     if model.provider == "deepseek" and any(t.function.strict for t in req.tools or []):
         return False
     output = req.max_tokens or req.max_completion_tokens or grant.max_output_tokens
-    if output > min(grant.max_output_tokens, model.max_output_tokens):
+    if output > min(grant.max_output_tokens, model.max_output_tokens, OUTPUT_TOKENS):
         return False
-    if req.text_bound() + output > model.context_tokens:
+    if req.text_bound() + output > min(model.context_tokens, CONTEXT_TOKENS):
         return False
     try:
         mode_for(model, req)

@@ -57,7 +57,7 @@ async def test_identity_disabled_revocation_expiry(env):
             "/admin/v1/grants",
             json={
                 "company_id": other["id"],
-                "application_id": credentials["applications"]["chat"]["application_id"],
+                "application_id": credentials["applications"]["pp_chat"]["application_id"],
             },
         )
     ).json()
@@ -66,7 +66,7 @@ async def test_identity_disabled_revocation_expiry(env):
     ).json()
     auth = {
         "Authorization": "Bearer " + key["secret"],
-        "X-Company-ID": credentials["applications"]["chat"]["company_id"],
+        "X-Company-ID": credentials["applications"]["pp_chat"]["company_id"],
     }
     assert (
         await client.post("/v1/chat/completions", headers=auth, json=chat(company_id="pp_admin"))
@@ -89,7 +89,7 @@ async def test_identity_disabled_revocation_expiry(env):
 async def test_openai_sdk_and_stream_usage(env):
     app, client, provider, creds = env
     sdk = AsyncOpenAI(
-        api_key=creds["applications"]["chat"]["api_key"],
+        api_key=creds["applications"]["pp_chat"]["api_key"],
         base_url="http://test/v1",
         http_client=client,
         max_retries=0,
@@ -207,7 +207,7 @@ async def test_capabilities_tools_and_reasoning_binding(env):
     assert (
         await client.post(
             "/v1/chat/completions",
-            headers=headers(creds, "vision"),
+            headers=headers(creds, "pp_cad"),
             json=chat("auto", messages=continuation),
         )
     ).status_code == 400
@@ -243,7 +243,7 @@ async def test_classifier_permission_and_timeout(env):
         await client.post("/v1/chat/completions", headers=headers(creds), json=chat("auto"))
     ).status_code == 200
     async with app.state.db.session.begin() as session:
-        grant = await session.get(CompanyApplication, creds["applications"]["chat"]["grant_id"])
+        grant = await session.get(CompanyApplication, creds["applications"]["pp_chat"]["grant_id"])
         grant.allowed_models = ["deepseek-v4-pro", "kimi-k3.1-pro"]
     provider.calls.clear()
     assert (
@@ -277,7 +277,7 @@ async def test_routing_preview_records_only_classifier_and_enforces_identity(env
     assert (await client.post("/admin/v1/routing/preview", json=payload)).status_code == 401
     await admin_login(client, creds)
     keys = (await client.get("/admin/v1/keys")).json()
-    key = next(k for k in keys if k["grant_id"] == creds["applications"]["chat"]["grant_id"])
+    key = next(k for k in keys if k["grant_id"] == creds["applications"]["pp_chat"]["grant_id"])
     payload["key_id"] = key["id"]
     response = await client.post("/admin/v1/routing/preview", json=payload)
     assert response.status_code == 200, response.text

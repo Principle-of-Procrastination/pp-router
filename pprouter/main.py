@@ -15,6 +15,7 @@ from pprouter.config import Settings
 from pprouter.db import Database, migrate
 from pprouter.errors import GatewayError
 from pprouter.gateway import Gateway
+from pprouter.limits import CONTEXT_TOKENS, OUTPUT_TOKENS
 from pprouter.models import Model
 from pprouter.providers import ProviderPool
 from pprouter import reports  # noqa: F401  register report routes
@@ -157,14 +158,31 @@ def create_app(settings=None, providers=None):
         async with app.state.db.session() as session:
             models = await session.scalars(select(Model).where(Model.enabled.is_(True)))
             items = [
-                {"id": m.id, "object": "model", "created": 0, "owned_by": m.provider}
+                {
+                    "id": m.id,
+                    "object": "model",
+                    "created": 0,
+                    "owned_by": m.provider,
+                    "context_tokens": min(m.context_tokens, CONTEXT_TOKENS),
+                    "max_output_tokens": min(
+                        m.max_output_tokens, caller.grant.max_output_tokens, OUTPUT_TOKENS
+                    ),
+                }
                 for m in models
                 if m.id in caller.grant.allowed_models
                 and app.state.providers.configured(m.provider)
             ]
         if items:
             items.insert(
-                0, {"id": "auto", "object": "model", "created": 0, "owned_by": "pp-router"}
+                0,
+                {
+                    "id": "auto",
+                    "object": "model",
+                    "created": 0,
+                    "owned_by": "pp-router",
+                    "context_tokens": min(m["context_tokens"] for m in items),
+                    "max_output_tokens": min(m["max_output_tokens"] for m in items),
+                },
             )
         return {"object": "list", "data": items}
 

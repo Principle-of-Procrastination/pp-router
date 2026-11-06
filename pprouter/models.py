@@ -15,6 +15,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
+from pprouter.limits import CONTEXT_TOKENS, OUTPUT_TOKENS
+
 
 def uid() -> str:
     return uuid4().hex
@@ -53,7 +55,7 @@ class CompanyApplication(Base):
     allowed_models: Mapped[list] = mapped_column(JSON)
     rpm: Mapped[int] = mapped_column(Integer, default=60)
     concurrency: Mapped[int] = mapped_column(Integer, default=4)
-    max_output_tokens: Mapped[int] = mapped_column(Integer, default=8192)
+    max_output_tokens: Mapped[int] = mapped_column(Integer, default=OUTPUT_TOKENS)
     policy: Mapped[dict] = mapped_column(JSON)
     policy_version: Mapped[int] = mapped_column(Integer, default=1)
 
@@ -103,8 +105,8 @@ class Model(Base):
     vision: Mapped[bool] = mapped_column(Boolean)
     tools: Mapped[bool] = mapped_column(Boolean, default=True)
     formats: Mapped[list] = mapped_column(JSON)
-    context_tokens: Mapped[int] = mapped_column(Integer, default=1_000_000)
-    max_output_tokens: Mapped[int] = mapped_column(Integer, default=32768)
+    context_tokens: Mapped[int] = mapped_column(Integer, default=CONTEXT_TOKENS)
+    max_output_tokens: Mapped[int] = mapped_column(Integer, default=OUTPUT_TOKENS)
 
 
 class GatewayRequest(Base):

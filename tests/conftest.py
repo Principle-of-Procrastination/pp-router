@@ -145,7 +145,7 @@ async def admin_login(client, credentials):
     client.headers["x-csrf-token"] = response.json()["csrf_token"]
 
 
-def headers(credentials, code="chat"):
+def headers(credentials, code="pp_chat"):
     return {"Authorization": "Bearer " + credentials["applications"][code]["api_key"]}
 
 

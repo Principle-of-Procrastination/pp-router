@@ -865,7 +865,7 @@ function GrantEditor({
           type="number"
           name="max_output_tokens"
           min="256"
-          max="32768"
+          max="32000"
           defaultValue={grant.max_output_tokens}
           required
         />

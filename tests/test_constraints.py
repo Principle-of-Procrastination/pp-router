@@ -24,7 +24,7 @@ async def test_labelled_routes_stay_inside_capability_and_permission_boundary(en
     app, client, provider, creds = env
     # This is an adversarial constraint test, not a claim of real semantic accuracy.
     async with app.state.db.session.begin() as session:
-        grant = await session.get(CompanyApplication, creds["applications"]["chat"]["grant_id"])
+        grant = await session.get(CompanyApplication, creds["applications"]["pp_chat"]["grant_id"])
         grant.allowed_models = ["deepseek-flash", "deepseek-v4-pro"]
     provider.classification = {
         "task": case["task"],
@@ -141,7 +141,7 @@ async def test_body_limit_and_no_payload_leak(env):
 async def test_all_access_switches_apply_immediately(env, target):
     app, client, provider, creds = env
     await admin_login(client, creds)
-    entry = creds["applications"]["chat"]
+    entry = creds["applications"]["pp_chat"]
     if target == "grant":
         async with app.state.db.session.begin() as session:
             grant = await session.get(CompanyApplication, entry["grant_id"])
@@ -163,7 +163,7 @@ async def test_all_access_switches_apply_immediately(env, target):
 async def test_concurrent_calls_and_rpm(env):
     app, client, provider, creds = env
     async with app.state.db.session.begin() as session:
-        grant = await session.get(CompanyApplication, creds["applications"]["chat"]["grant_id"])
+        grant = await session.get(CompanyApplication, creds["applications"]["pp_chat"]["grant_id"])
         grant.concurrency = 16
         grant.rpm = 12
     responses = await asyncio.gather(
@@ -211,7 +211,7 @@ async def test_grant_policy_version_and_key_rotation(env):
     changed = await client.put("/admin/v1/grants/" + grant["id"], json=update)
     assert changed.json()["policy_version"] == grant["policy_version"] + 1
     all_keys = (await client.get("/admin/v1/keys")).json()
-    key = next(k for k in all_keys if k["grant_id"] == creds["applications"]["chat"]["grant_id"])
+    key = next(k for k in all_keys if k["grant_id"] == creds["applications"]["pp_chat"]["grant_id"])
     replacement = (await client.post("/admin/v1/keys/" + key["id"] + "/rotate")).json()
     assert (await client.get("/v1/models", headers=headers(creds))).status_code == 401
     assert (
@@ -247,7 +247,7 @@ async def test_concurrent_provisioning_is_idempotent(env):
                 headers=auth,
                 json={
                     "company_id": company_id,
-                    "application_id": creds["applications"]["chat"]["application_id"],
+                    "application_id": creds["applications"]["pp_chat"]["application_id"],
                 },
             )
             for _ in range(8)

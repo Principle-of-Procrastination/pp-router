@@ -10,6 +10,7 @@ from sqlalchemy.dialects.sqlite import insert
 
 from pprouter.catalog import DEFAULT_POLICY, MODEL_IDS
 from pprouter.errors import GatewayError
+from pprouter.limits import OUTPUT_TOKENS
 from pprouter.models import (
     AccessKey,
     AdminSession,
@@ -226,7 +227,7 @@ class GrantSettings(StrictModel):
     )
     rpm: int = Field(default=60, ge=1, le=10000)
     concurrency: int = Field(default=4, ge=1, le=128)
-    max_output_tokens: int = Field(default=8192, ge=256, le=32768)
+    max_output_tokens: int = Field(default=OUTPUT_TOKENS, ge=256, le=OUTPUT_TOKENS)
     policy: Policy = Field(default_factory=Policy)
 
     def checked(self):
