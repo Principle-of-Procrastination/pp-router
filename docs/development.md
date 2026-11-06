@@ -14,7 +14,9 @@ make init
 make dev
 ```
 
-`setup` 安装锁定依赖，缺失时创建 `0600` 的 `.env`，安装前端依赖与 Chromium；不覆盖已有 `.env`。`init` 迁移数据库并生成初始管理员、`pp_admin` 演示公司、chat / vision / agent 三个应用及授权、密钥和内部开户凭证。默认本地密码随机生成，也可提前在 `.env` 设置至少 12 字符的 `PP_ADMIN_PASSWORD`。
+`setup` 安装锁定依赖，缺失时创建 `0600` 的 `.env`，安装前端依赖与 Chromium；不覆盖已有 `.env`。`init` 迁移数据库并生成初始管理员、`pp_admin` 演示公司、PP Code / PP Chat / PP CAD 三个产品应用及授权、密钥和内部开户凭证。三个应用初始均授权全部模型；输出上限统一为 32000，模型总上下文上限统一为 256000。默认本地密码随机生成，也可提前在 `.env` 设置至少 12 字符的 `PP_ADMIN_PASSWORD`。既有应用的迁移与接入说明见 [应用目录](applications.md)。
+
+PP Code 客户端开发在独立的 [pp-code 仓库](https://github.com/Principle-of-Procrastination/pp-code)进行，源码启动和模型连接实现见其 [开发者指南](https://github.com/Principle-of-Procrastination/pp-code/blob/main/pp/DEVELOPMENT.md)。跨仓库修改调用协议或限制时，需同时核对客户端配置、构建产物和网关接口；对应文件入口见 [PP Code 接入说明](applications.md#pp-code-的已有接入)。
 
 首次凭证写入 `.local/credentials.json`。重复初始化不会重置密码或重新导出已存在的密钥。新数据库应使用新的、可写且未占用的凭证输出路径；不要删数据库后继续把旧凭证文件当成新环境凭证。初始化如果在写凭证文件时失败，要先核查数据库是否已初始化，不要假定再次运行可以取回明文。
 
@@ -44,7 +46,9 @@ npm run dev --prefix frontend -- --host 127.0.0.1 --strictPort
 | `PPROUTER_MAX_CONCURRENT` | 16；整个后端进程的模型请求并发保护 |
 | `PPROUTER_COOKIE_SECURE` | 本地 false；HTTPS 部署设为 true |
 
-`session_seconds=8小时`、`max_body_bytes=20MiB` 当前为代码设置，未开放同名环境变量。单次请求的输出上限由请求、授权与模型共同约束；不传上限会使用授权值，初始默认通常为 8192，而不是示例中的 256。
+`session_seconds=8小时`、`max_body_bytes=20MiB` 当前为代码设置，未开放同名环境变量。`pprouter/limits.py` 定义网关上下文 256000 / 输出 32000 的上限，数据库模型和授权还可约束更低值。请求输出必须满足所有上限，超限拒绝，不自动改写为更小值；不传时默认使用授权上限（初始为 32000），低消耗测试仍应显式设为 32 或 256。
+
+上下文检查使用输入 UTF-8 字节、消息 / 工具 / 格式开销及每张图片 80000 的保护性预算，加上有效输出上限，再与 256000 及模型上限比较。它不是供应商精确 tokenizer，可能比真实容量更早拒绝，不能用于填充用量。不会自动裁剪业务输入；`GET /v1/models` 返回当前密钥可用的 `context_tokens` / `max_output_tokens` 扩展字段。
 
 供应商地址固定在 `providers.py`：DeepSeek 为 `https://api.deepseek.com`，Kimi 为 `https://api.moonshot.cn/v1`。请求方不能覆盖它们，也不能携带自己的供应商凭证。修改进程环境或配置文件后需重启后端；服务器替换挂载文件时使用容器重建，见 [运维手册](../deploy/README.md)。
 
@@ -129,6 +133,8 @@ flowchart TD
 SQLite 开启 WAL、外键与 5 秒 busy timeout，写事务保持短小。每个数据库只允许一个运行中的后端进程；启动时取得文件锁，再迁移并将残留 running 记录改为 interrupted，不自动补发请求。锁文件存在本身不代表锁仍被持有，不要靠删除锁文件绕过运行实例。
 
 后端启动和 CLI migrate 会应用当前迁移。模型字段变更需要提交 Alembic revision，不能靠删除真实数据库更新结构。
+
+`6b5d9182c4fa` 原地更新产品目录，`c7218f4b0ad6` 统一已有模型和授权的 token 上限；后者为改变的授权递增策略版本并记录前后值。迁移不重新发钥、不改变管理员身份或历史用量。回退上限迁移仅允许记录仍与迁移后的值一致；之后又编辑了授权时会拒绝覆盖，应使用核对过的备份进行恢复。
 
 下面的例子显式使用独立的开发数据库；不会调用模型：
 

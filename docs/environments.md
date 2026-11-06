@@ -2,7 +2,7 @@
 
 [返回项目首页](../README.md) · [套件接入](integration.md) · [部署运维](../deploy/README.md)
 
-最后核验：2026-11-05。以下是团队当前环境，不是为客户承诺的永久域名或服务等级。接入时用配置保存地址，避免写死在业务代码中。
+最后核验：2026-11-06。以下是团队当前环境，不是为客户承诺的永久域名或服务等级。接入时用配置保存地址，避免写死在业务代码中。
 
 ## 地址
 
@@ -37,6 +37,10 @@
 
 供 PP 内部同事登录管理端，管理公司、应用、调用密钥、路由及用量月报。此账号具有全平台管理权限，不是客户公司的登录账号。
 
+初始化还创建了同名 `pp_admin` 公司，用于内部模型调用归因；它和管理员账号独立。之后新增的客户公司没有后台密码，也不能凭公司名称或应用密钥登录这里。PP Code 的邀请码是它所属公司应用的密钥，不是下方的管理员密码。
+
+PP Code 的启动入口与邀请码录入步骤见其仓库 [用户指南](https://github.com/Principle-of-Procrastination/pp-code/blob/main/pp/WEB.md)；网关侧的应用归属和接入约束见 [应用目录](applications.md#pp-code-的已有接入)。
+
 - 管理端：<https://150.158.155.100/>
 - 用户名：`pp_admin`
 - 密码：`lXAg0hjo32FOaGN3Rqo5-qUGiPs`
@@ -54,7 +58,8 @@
 - Lighthouse：上海，实例 `lhins-pjwgqizk`，公网 IP `150.158.155.100`，升级后 4 核 / 4 GB / 60 GB。
 - Docker Compose 项目：`pp-router`；常驻容器为 `gateway`、`web`。
 - 发布入口：`/opt/pp-router/current`；持久化配置与数据：`/opt/pp-router/shared`。
+- 当前发布：`20261106-03`；应用目录为 PP Code / PP Chat / PP CAD，统一默认输出 32000、总上下文 256000，超限请求直接拒绝。原邀请码和应用 ID 保持有效，见 [应用目录](applications.md)。
 - 后端端口只在容器网络内使用，公网由 Nginx 提供 HTTPS；证书续期 timer 为 `pp-router-cert-renew.timer`。
-- 当前上线验收只消耗 640 token。详细范围和证据见 [验收记录](../specs/local-mvp/acceptance.md)。
+- 首次上线验收消耗 640 token；2026-11-06 的应用目录及上限迁移只查询身份、模型目录和报表，没有新增模型调用。详细范围和证据见 [验收记录](../specs/local-mvp/acceptance.md)。
 
 调整地址、证书、访问入口或服务器目录时，同步更新本页，并通知所有已接入套件的负责人。

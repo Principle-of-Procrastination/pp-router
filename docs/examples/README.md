@@ -8,6 +8,8 @@
 
 先让管理员为目标公司开通应用并签发密钥。示例 text / stream / image / tools 需要 `deepseek-flash` 权限；严格 JSON 示例使用 auto，需要 `kimi-k3.1-pro` 权限。应用 max_output_tokens 至少允许 256。
 
+这些是协议场景，不是五个产品应用。PP Code、PP Chat、PP CAD 均默认开放全部模型；使用你要归因的公司应用密钥即可测试相应场景，无需为“图片”或“工具”另建应用。统一默认输出 32000、总上下文 256000，示例显式使用更小输出以控制验证消耗。
+
 ```sh
 export PP_ROUTER_BASE_URL='https://150.158.155.100/v1'
 # 通过私密环境配置 PP_ROUTER_API_KEY=该公司应用密钥。

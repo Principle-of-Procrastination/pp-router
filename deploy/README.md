@@ -24,7 +24,7 @@
 `compose.env` 示例：
 
 ```dotenv
-PPROUTER_RELEASE=20261105-01
+PPROUTER_RELEASE=20261106-03
 PPROUTER_STATE_DIR=/opt/pp-router/shared
 ```
 
@@ -68,7 +68,11 @@ dc run --rm --no-deps gateway \
   python -m pprouter.cli init --credentials-file /data/initial-credentials.json
 ```
 
-初始化创建独立服务器数据库、`pp_admin` 管理员及三个演示应用，不复制开发数据。首次凭证使用 `0600`，应通过安全通道保存到本机受保护位置，随后从服务器删除。重复初始化不重置密码或密钥。演示应用的初始环境标签为 `local`，正式应用应在管理端签发对应环境的独立密钥。
+初始化创建独立服务器数据库、`pp_admin` 管理员及 PP Code / PP Chat / PP CAD 三个产品应用，均授权全部模型，不复制开发数据。首次凭证使用 `0600`，应通过安全通道保存到本机受保护位置，随后从服务器删除。重复初始化不重置密码或密钥。初始密钥环境标签为 `local`，正式应用应在管理端签发对应环境的独立密钥。旧目录通过迁移原地更名，保留已有应用 ID 和邀请码，见 [应用目录](../docs/applications.md)。
+
+管理员和同名公司是独立实体，新增客户公司不创建后台登录账号。当前统一输出上限 32000、总上下文上限 256000；上限迁移会更新已有模型与授权，并保留身份、密钥、历史用量及其他调用配置。升级前备份数据库，升级后核对授权、模型目录和月报即可，不需要为验证上限而生成长回答。PP Code 旧发布包的配置同步要求见 [接入说明](../docs/applications.md#pp-code-的已有接入)。
+
+PP Code 客户端构建、Repository Variables 配置及发版步骤见真实仓库的 [发布指南](https://github.com/Principle-of-Procrastination/pp-code/blob/main/pp/RELEASING.md)，CI 实现见 [`pp-release.yml`](https://github.com/Principle-of-Procrastination/pp-code/blob/main/.github/workflows/pp-release.yml)。网关部署与客户端发布分别执行，修改调用限制时需核对两侧实际发布配置。
 
 首先把 `nginx-bootstrap.conf` 复制到共享的 `nginx.conf`，启动容器；此时 80 端口只接受证书验证，其余路径返回 503，不能提交登录凭证：
 

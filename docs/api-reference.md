@@ -17,11 +17,17 @@
 
 前缀不是鉴权依据，服务器校验密钥哈希、类型、启停及有效期。内部开户凭证目前是跨公司的平台级能力，未细分公司 / 应用权限。管理员会话同样没有只读销售或运营角色。
 
+管理员 `pp_admin` 与公司 `pp_admin` 分属 `admin_users`、`companies`，不存在“同名公司自动获得管理权限”的规则。创建公司、开通应用或发放应用密钥都不会创建管理员账号。当前没有客户后台登录或管理员账号管理 API；停用公司影响它的应用调用，不会停用独立的管理员账号。
+
+共享产品代码为 `pp_code`、`pp_chat`、`pp_cad`，均默认授权全部模型。开户接口需要的 `application_id` 是管理员提供的数据库 ID，不是应用代码；模型调用的归属只从密钥解析。
+
 ## 模型调用
 
 ### `GET /v1/models`
 
 返回该应用密钥可访问、模型已启用且对应供应商凭证已配置的模型；有可用模型时加入 `auto`。返回的是 OpenAI 风格 `{ "object": "list", "data": [...] }`，不是供应商实时可用性探测，也不包含针对某一请求的全部能力过滤结果。
+
+各条目除 `id/object/created/owned_by` 外，还提供扩展字段 `context_tokens`（总上下文上限）与 `max_output_tokens`（模型、当前授权和服务共同允许的输出上限）。当前默认分别为 256000 / 32000；`auto` 取当前目录中最保守的上限，便于客户端配置会话窗口。查询不会调用供应商模型。
 
 ### `POST /v1/chat/completions`
 
@@ -34,7 +40,7 @@
 | `stream` | 默认 `false` |
 | `stream_options.include_usage` | 默认 `false`；只允许与 `stream=true` 一起使用 |
 | `n` | 仅 `1` |
-| `max_tokens` / `max_completion_tokens` | 二选一，1–32768；还受授权与模型上限限制；均省略则使用授权上限 |
+| `max_tokens` / `max_completion_tokens` | 二选一，整数 1–32000；还须满足授权和模型上限，超限拒绝；均省略则使用授权上限 |
 | `temperature` | 0–2；最终适用性取决于模型 / 模式 |
 | `top_p` | 大于 0 且不超过 1 |
 | `stop` | 字符串或 1–16 个字符串组成的数组 |
@@ -66,6 +72,12 @@
 ```
 
 示例图片地址是占位地址，运行时替换为供应商可访问的图片。也可使用 `data:image/png;base64,...`；省略号不是有效图片。内联 MIME 支持 PNG / JPEG / WebP / GIF，单张解码后最多 5 MiB，总图片数最多 8，总请求体最多 20 MiB。HTTPS URL 不允许用户名密码、localhost、`.local` 主机或显式私有 IP。网关不下载 URL、不附带图片访问认证；还需满足供应商实际图像限制。
+
+### 输出与总上下文上限
+
+所有产品当前统一默认输出 **32000**、总上下文 **256000**。总上下文包含输入和预留输出，并不是输入 256000 后还能再输出 32000。客户端可以请求更低输出；超过 32000 的值返回 HTTP 400 `invalid_request`，不会调用上游。授权或模型上限更低时，超出该上限的模型会被过滤；无合格候选则拒绝，不自动缩小请求值。标准响应 `usage` 仍是实际用量，不是预留额度。
+
+网关在选路和调用前进行保守检查：输入文本 / 推理续接按 UTF-8 字节数计，计入工具定义、工具调用、格式、消息开销，并为每张图片预留 80000，再加上有效输出上限。这不是供应商精确 token 数；实际可接受内容可能小于名义窗口，多张图片也可能先触发上下文限制。该估计只用于保护调用，不记入确认用量。输入过长时拒绝，不裁剪消息或丢弃图片；客户端需缩短内容或压缩历史。
 
 ### 模型与模式约束
 
@@ -143,6 +155,8 @@
 
 ### 应用授权
 
+从 PP Code / PP Chat / PP CAD 的共享目录选择应用并取得 ID。策略里的 `agent`、`vision` 等是任务分类，不是旧应用标识，应保留这些任务键。
+
 `POST /internal/v1/grants`：`company_id` 和 `application_id` 必填，其他字段见下表。示例显式指定完整策略，便于审阅：
 
 ```json
@@ -153,7 +167,7 @@
   "allowed_models": ["deepseek-flash", "deepseek-v4-pro", "kimi-k3.1-pro"],
   "rpm": 60,
   "concurrency": 4,
-  "max_output_tokens": 8192,
+  "max_output_tokens": 32000,
   "policy": {
     "classifier_model": "deepseek-flash",
     "default_model": "deepseek-flash",
@@ -176,7 +190,7 @@
 | `allowed_models` | 1–3 项，必须来自当前固定目录；默认三种模型 |
 | `rpm` | 1–10000；默认 60，按授权计的滚动 60 秒窗口 |
 | `concurrency` | 1–128；默认 4，还受全局并发上限限制 |
-| `max_output_tokens` | 256–32768；默认 8192；调用时可选择更低值 |
+| `max_output_tokens` | 256–32000；默认 32000；调用时可选择更低值 |
 | `policy.classifier_model` | 当前只能为 `deepseek-flash`；未授权 / 不可用时不能调用分类器 |
 | `policy.default_model` | 必须在 allowed_models 中，作为合格候选优先顺序的一部分 |
 | `policy.fallback_order` | 1–3 个已登记模型；只有满足本次权限与能力约束的模型才可使用 |
