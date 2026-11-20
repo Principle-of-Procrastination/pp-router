@@ -227,6 +227,7 @@ export default function App() {
         </a>
         <p className="eyebrow">WORKSPACE / ADMIN</p>
         <nav>
+          <a href={new URL('/platform', import.meta.env.VITE_PP_SUITE_ORIGIN || `${window.location.protocol}//${window.location.hostname}:8546`).href}>Suite 企业与席位管理</a>
           {pageNames.map((name, i) => {
             const Icon = icons[i];
             return (

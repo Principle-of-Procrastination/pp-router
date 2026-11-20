@@ -43,7 +43,11 @@ auth = APIRouter(prefix="/admin/v1/auth")
 
 def public(row):
     blocked = {"password_hash", "digest", "csrf_token"}
-    return {c.name: getattr(row, c.name) for c in row.__table__.columns if c.name not in blocked}
+    return {
+        c.name: getattr(row, c.name)
+        for c in row.__table__.columns
+        if c.name not in blocked
+    }
 
 
 async def actor(request):
@@ -53,7 +57,9 @@ async def actor(request):
 
 
 def audit(session, who, action, target, details=None):
-    session.add(AuditLog(actor=who, action=action, target=target, details=details or {}))
+    session.add(
+        AuditLog(actor=who, action=action, target=target, details=details or {})
+    )
 
 
 async def get(session, cls, id):
@@ -76,15 +82,23 @@ async def login(body: Login, request: Request, response: Response):
     )
     db = request.app.state.db
     async with db.session.begin() as session:
-        user = await session.scalar(select(AdminUser).where(AdminUser.username == body.username))
+        user = await session.scalar(
+            select(AdminUser).where(AdminUser.username == body.username)
+        )
         encoded = user.password_hash if user else request.app.state.dummy_hash
         valid = await asyncio.to_thread(verify_password, encoded, body.password)
         if not user or not valid or not user.enabled:
-            raise GatewayError(401, "invalid_credentials", "Username or password is incorrect.")
-        await session.execute(delete(AdminSession).where(AdminSession.expires_at <= time.time()))
+            raise GatewayError(
+                401, "invalid_credentials", "Username or password is incorrect."
+            )
+        await session.execute(
+            delete(AdminSession).where(AdminSession.expires_at <= time.time())
+        )
         old = request.cookies.get(COOKIE)
         if old:
-            await session.execute(delete(AdminSession).where(AdminSession.digest == digest(old)))
+            await session.execute(
+                delete(AdminSession).where(AdminSession.digest == digest(old))
+            )
         token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
         session.add(
             AdminSession(
@@ -120,7 +134,9 @@ async def me(request: Request):
 async def logout(request: Request, response: Response):
     async with request.app.state.db.session.begin() as session:
         await session.execute(
-            delete(AdminSession).where(AdminSession.id == request.state.admin_session.id)
+            delete(AdminSession).where(
+                AdminSession.id == request.state.admin_session.id
+            )
         )
     response.delete_cookie(COOKIE, path="/")
     return {"ok": True}
@@ -140,7 +156,8 @@ class Enabled(StrictModel):
 async def companies(request: Request):
     async with request.app.state.db.session() as session:
         return [
-            public(x) for x in await session.scalars(select(Company).order_by(Company.created_at))
+            public(x)
+            for x in await session.scalars(select(Company).order_by(Company.created_at))
         ]
 
 
@@ -175,6 +192,12 @@ async def update_company(id: str, body: Enabled, request: Request):
     who = await actor(request)
     async with request.app.state.db.session.begin() as session:
         row = await get(session, Company, id)
+        if (row.external_id or "").startswith("pp-suite-production:"):
+            raise GatewayError(
+                409,
+                "suite_managed",
+                "Manage this company in the PP Suite platform console.",
+            )
         row.enabled = body.enabled
         audit(session, who, "company.update", id, body.model_dump())
         return public(row)
@@ -207,7 +230,9 @@ async def update_application(id: str, body: Enabled, request: Request):
     async with request.app.state.db.session.begin() as session:
         row = await get(session, Application, id)
         row.enabled = body.enabled
-        audit(session, await actor(request), "application.update", id, body.model_dump())
+        audit(
+            session, await actor(request), "application.update", id, body.model_dump()
+        )
         return public(row)
 
 
@@ -217,7 +242,9 @@ class Policy(StrictModel):
     fallback_order: list[str] = Field(
         default_factory=lambda: list(MODEL_IDS), min_length=1, max_length=3
     )
-    task_routes: dict[str, str] = Field(default_factory=lambda: dict(DEFAULT_POLICY["task_routes"]))
+    task_routes: dict[str, str] = Field(
+        default_factory=lambda: dict(DEFAULT_POLICY["task_routes"])
+    )
 
 
 class GrantSettings(StrictModel):
@@ -231,14 +258,23 @@ class GrantSettings(StrictModel):
     policy: Policy = Field(default_factory=Policy)
 
     def checked(self):
-        values = self.allowed_models + [self.policy.default_model, self.policy.classifier_model]
+        values = self.allowed_models + [
+            self.policy.default_model,
+            self.policy.classifier_model,
+        ]
         values += self.policy.fallback_order + list(self.policy.task_routes.values())
         if any(v not in MODEL_IDS for v in values):
-            raise GatewayError(400, "invalid_model", "Policy contains an unknown model.")
+            raise GatewayError(
+                400, "invalid_model", "Policy contains an unknown model."
+            )
         if self.policy.default_model not in self.allowed_models:
-            raise GatewayError(400, "invalid_policy", "Default model must be authorized.")
+            raise GatewayError(
+                400, "invalid_policy", "Default model must be authorized."
+            )
         if set(self.policy.task_routes) - set(DEFAULT_POLICY["task_routes"]):
-            raise GatewayError(400, "invalid_policy", "Policy contains an unknown task category.")
+            raise GatewayError(
+                400, "invalid_policy", "Policy contains an unknown task category."
+            )
         return self.model_dump()
 
 
@@ -265,7 +301,10 @@ async def create_grant(body: GrantInput, request: Request):
             insert(CompanyApplication)
             .values(**values)
             .on_conflict_do_nothing(
-                index_elements=[CompanyApplication.company_id, CompanyApplication.application_id]
+                index_elements=[
+                    CompanyApplication.company_id,
+                    CompanyApplication.application_id,
+                ]
             )
             .returning(CompanyApplication)
         )
@@ -288,6 +327,15 @@ async def update_grant(id: str, body: GrantSettings, request: Request):
     who = await actor(request)
     async with request.app.state.db.session.begin() as session:
         row = await get(session, CompanyApplication, id)
+        company = await get(session, Company, row.company_id)
+        if (company.external_id or "").startswith(
+            "pp-suite-production:"
+        ) and row.enabled != body.enabled:
+            raise GatewayError(
+                409,
+                "suite_managed",
+                "Manage this product in the PP Suite platform console.",
+            )
         for key, value in values.items():
             setattr(row, key, value)
         row.policy_version += 1
@@ -307,7 +355,9 @@ async def keys(request: Request):
     async with request.app.state.db.session() as session:
         return [
             public(x)
-            for x in await session.scalars(select(AccessKey).order_by(AccessKey.created_at.desc()))
+            for x in await session.scalars(
+                select(AccessKey).order_by(AccessKey.created_at.desc())
+            )
         ]
 
 
@@ -316,7 +366,9 @@ async def keys(request: Request):
 async def issue_key(body: KeyInput, request: Request):
     who = await actor(request)
     if who.startswith("service:") and body.grant_id is None:
-        raise GatewayError(403, "forbidden", "Only admins may issue provisioning credentials.")
+        raise GatewayError(
+            403, "forbidden", "Only admins may issue provisioning credentials."
+        )
     if body.expires_at is not None and body.expires_at <= time.time():
         raise GatewayError(400, "invalid_expiry", "Expiry must be in the future.")
     async with request.app.state.db.session.begin() as session:
@@ -337,7 +389,9 @@ async def revoke(id: str, request: Request):
     async with request.app.state.db.session.begin() as session:
         row = await get(session, AccessKey, id)
         if who.startswith("service:") and row.kind != "application":
-            raise GatewayError(403, "forbidden", "Only admins may revoke provisioning credentials.")
+            raise GatewayError(
+                403, "forbidden", "Only admins may revoke provisioning credentials."
+            )
         row.enabled = False
         audit(session, who, "key.revoke", id)
     return {"ok": True}
@@ -358,7 +412,13 @@ async def rotate(id: str, request: Request):
         )
         session.add(replacement)
         await session.flush()
-        audit(session, await actor(request), "key.rotate", id, {"replacement_id": replacement.id})
+        audit(
+            session,
+            await actor(request),
+            "key.rotate",
+            id,
+            {"replacement_id": replacement.id},
+        )
         return {**public(replacement), "secret": raw}
 
 
@@ -366,7 +426,10 @@ async def rotate(id: str, request: Request):
 async def models(request: Request):
     async with request.app.state.db.session() as session:
         return [
-            {**public(x), "configured": request.app.state.providers.configured(x.provider)}
+            {
+                **public(x),
+                "configured": request.app.state.providers.configured(x.provider),
+            }
             for x in await session.scalars(select(Model))
         ]
 
@@ -400,7 +463,9 @@ async def requests(
         return [
             public(x)
             for x in await session.scalars(
-                query.order_by(GatewayRequest.started_at.desc()).limit(50).offset(max(0, offset))
+                query.order_by(GatewayRequest.started_at.desc())
+                .limit(50)
+                .offset(max(0, offset))
             )
         ]
 
@@ -439,12 +504,16 @@ async def playground_caller(body: Playground, request: Request):
             or not key.enabled
             or (key.expires_at and key.expires_at <= time.time())
         ):
-            raise GatewayError(403, "invalid_api_key", "Select an active application key.")
+            raise GatewayError(
+                403, "invalid_api_key", "Select an active application key."
+            )
         grant = await get(session, CompanyApplication, key.grant_id)
         company = await get(session, Company, grant.company_id)
         application = await get(session, Application, grant.application_id)
         if not (grant.enabled and company.enabled and application.enabled):
-            raise GatewayError(403, "access_disabled", "Company or application access is disabled.")
+            raise GatewayError(
+                403, "access_disabled", "Company or application access is disabled."
+            )
         return Caller(key, grant, company, application)
 
 
@@ -457,4 +526,106 @@ async def playground(body: Playground, request: Request):
 @admin.post("/routing/preview")
 async def routing_preview(body: Playground, request: Request):
     caller = await playground_caller(body, request)
-    return await request.app.state.gateway.handle(request, body.request, caller, routing_only=True)
+    return await request.app.state.gateway.handle(
+        request, body.request, caller, routing_only=True
+    )
+
+
+class SuiteCompany(StrictModel):
+    name: str = Field(min_length=1, max_length=160)
+    enabled: bool
+    # Only hashes cross this control API. The Suite retains each encrypted plaintext key.
+    grants: dict[Literal["pp_chat", "pp_code", "pp_sheets"], str]
+
+
+@internal.put("/suite/companies/{code}")
+async def apply_suite_company(code: str, body: SuiteCompany, request: Request):
+    import re
+
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", code) or any(
+        not re.fullmatch(r"[0-9a-f]{64}", value) for value in body.grants.values()
+    ):
+        raise GatewayError(
+            400, "invalid_company", "Invalid company or credential digest."
+        )
+    who = await actor(request)
+    external = "pp-suite-production:" + code
+    async with request.app.state.db.session.begin() as session:
+        # Start with a write so concurrent SQLite transactions serialize before inspecting state.
+        await session.execute(
+            insert(Company)
+            .values(code=code, name=body.name, external_id=external)
+            .on_conflict_do_nothing()
+        )
+        company = await session.scalar(
+            select(Company).where(Company.external_id == external)
+        )
+        if company is None or company.code != code:
+            raise GatewayError(
+                409,
+                "company_conflict",
+                "Company identity already belongs to another record.",
+            )
+        company.enabled, company.name = body.enabled, body.name
+        for product in ("pp_chat", "pp_code", "pp_sheets"):
+            app = await session.scalar(
+                select(Application).where(Application.code == product)
+            )
+            if app is None and product not in body.grants:
+                continue
+            if app is None:
+                raise GatewayError(
+                    409, "unknown_application", "Register the Suite product first."
+                )
+            grant = await session.scalar(
+                select(CompanyApplication).where(
+                    CompanyApplication.company_id == company.id,
+                    CompanyApplication.application_id == app.id,
+                )
+            )
+            wanted = body.grants.get(product)
+            if not wanted:
+                if grant is not None:
+                    grant.enabled = False
+                continue
+            if grant is None:
+                grant = CompanyApplication(
+                    company_id=company.id,
+                    application_id=app.id,
+                    **GrantSettings().checked(),
+                )
+                session.add(grant)
+                await session.flush()
+            grant.enabled = True
+            key = await session.scalar(
+                select(AccessKey).where(AccessKey.digest == wanted)
+            )
+            if key is None:
+                session.add(
+                    AccessKey(
+                        name="Suite production " + product,
+                        kind="application",
+                        grant_id=grant.id,
+                        environment="production",
+                        prefix="suite-managed",
+                        digest=wanted,
+                    )
+                )
+            elif (
+                key.grant_id != grant.id
+                or key.environment != "production"
+                or not key.enabled
+            ):
+                raise GatewayError(
+                    409,
+                    "key_conflict",
+                    "The configured key is revoked or has another owner.",
+                )
+        audit(
+            session,
+            who,
+            "suite.company.sync",
+            company.id,
+            {"products": sorted(body.grants)},
+        )
+        return {"id": company.id, "code": company.code, "enabled": company.enabled}
