@@ -2,7 +2,7 @@
 
 PP 产品套件共用的多公司 LLM 网关。套件后台通过统一接口调用 DeepSeek、Kimi 官方模型，网关识别公司与应用、执行模型选择，并记录可核对的 token 用量。
 
-**开通公司 → 授权应用 → 签发调用密钥 → 指定模型或 `auto` → 查看用量与月报。**
+Suite 员工用企业账号登录。平台管理员在 Suite 开公司、设席位和开通产品，Router 接收授权、限制调用并按公司记录 token。[Suite 企业管理](https://150.158.155.100:8546/platform)
 
 ## 按角色阅读
 
@@ -10,7 +10,7 @@ PP 产品套件共用的多公司 LLM 网关。套件后台通过统一接口调
 |---|---|
 | 开发、测试或维护这个仓库 | [开发者指南](docs/development.md) |
 | 为 PP 的其他套件接入模型调用 | [套件接入指南](docs/integration.md) |
-| 查询 PP Code、PP Chat、PP CAD 的应用代码和升级影响 | [套件应用目录](docs/applications.md) |
+| 核对助理、Code、表格公式等调用记在哪个应用 | [应用目录与用量归属](docs/applications.md) |
 | 向客户介绍产品、申请开户或处理用量问题 | [运营与销售指南](docs/operations.md) |
 | 查询字段、权限、错误码、开户接口 | [API 参考](docs/api-reference.md) |
 | 找管理端、API 地址和凭证获取方式 | [环境与访问入口](docs/environments.md) |
@@ -27,13 +27,13 @@ PP 产品套件共用的多公司 LLM 网关。套件后台通过统一接口调
 
 当前登记模型为 `deepseek-flash`、`deepseek-v4-pro`、`kimi-k3.1-pro`。可用性由配置、启停、授权及具体请求共同决定，详见 [API 参考](docs/api-reference.md)。
 
-产品应用为 **[PP Code](https://github.com/Principle-of-Procrastination/pp-code)、PP Chat、PP CAD**，三个应用均可调用全部已登记模型，统一默认输出上限 **32000**、总上下文上限 **256000**（包含输入和输出）。原演示应用原地升级，保留已有邀请码、授权和用量，见 [应用目录](docs/applications.md)。PP Code 客户端的源码、使用与发布文档维护在其独立仓库中，具体入口见 [PP Code 接入说明](docs/applications.md#pp-code-的已有接入)。
+Suite 的助理和办公侧栏记在 `pp_chat`，桌面 Code 记在 `pp_code`，表格公式记在 `pp_sheets`。`pp_cad` 是另行登记的 Router 产品。每家公司的具体授权、模型和限额在 Router 查看。[应用目录](docs/applications.md)
 
-## 先明确三个边界
+## 账号和月报
 
-1. **公司开户不等于创建客户登录账号。** pp-router 管理端只供内部管理员使用；客户使用对应套件的入口，当前 PP Code 使用应用密钥作为邀请码。管理员 `pp_admin` 与同名公司是分别初始化的独立实体。
-2. **本轮只统计 token，不计算金额。** 没有价格、余额、充值、支付、发票、自动扣费或金额预算控制；月报不是供应商结算账单。
-3. **这是单机、单后端进程的 MVP。** SQLite 和进程内限流不支持直接扩成多副本；也未提供客户自助门户、细分管理员角色、SSO 或高可用部署。
+员工账号和席位在 Suite 管理。Router 的 `pp_admin` 可登录网关管理台，也可登录 Suite 的企业管理页。Router 中同名的演示公司只用于记录调用。每月按公司、应用和环境导出已确认的 token 用量，金额在线下核算。
+
+Router 以单个后端进程运行，使用 SQLite 保存数据，在进程内执行限流。运维和恢复按本仓库的 Compose 手册操作。[运维手册](deploy/README.md)
 
 ## 本地快速启动
 
@@ -58,6 +58,6 @@ make release  # 生成不含密钥、数据库的 Docker 部署包
 
 ## 文档维护约定
 
-本文档描述当前代码与已验证行为，不把规划写成已上线功能。当前环境信息最后核验于 **2026-11-06**；地址变化集中更新 [环境说明](docs/environments.md)。
+服务地址和入口集中维护在环境说明中。历史版本和验收时间保存在验收记录中。[环境说明](docs/environments.md)
 
 修改接口时同步更新 [API 参考](docs/api-reference.md) 与 [接入示例](docs/examples/README.md)；修改产品能力或操作流程时同步更新 [运营与销售指南](docs/operations.md)。历史设计与验收保存在 `specs/`，日常使用以这些角色指南和当前接口实现为准。

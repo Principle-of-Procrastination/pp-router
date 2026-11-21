@@ -2,21 +2,18 @@
 
 [返回项目首页](../README.md) · [套件接入指南](integration.md) · [环境与地址](environments.md)
 
-PP 的产品套件按 **PP Code、PP Chat、PP CAD** 三个应用登记。应用代表产品归属，不代表模型能力类别；三个应用都可以显式调用全部已登记模型，也都支持 `auto`。
+平台运营和产品开发者用本页判断一条请求应记在哪个产品下。模型请求的公司、应用和环境从调用凭据取得。企业成员和席位由 Suite 管理。[Suite 企业管理](https://150.158.155.100:8546/platform)
 
-2026-11-06 已在本地和团队服务器完成应用目录迁移（`20261106-01`）。现有 PP Code 邀请码已通过模型目录验证，无需更换；当前发布版本以 [环境说明](environments.md) 为准。
+| 来源 | Router 应用 | 什么时候产生用量 |
+| --- | --- | --- |
+| PP 助理，含文档、演示、表格的助理侧栏 | `pp_chat` | 员工对话、使用助理功能时 |
+| Suite 版 PP Code | `pp_code` | 已连接的员工设备调用模型时 |
+| PP 表格 | `pp_sheets` | 运行 `PP.AI` 公式时 |
+| 单独接入的 PP CAD | `pp_cad` | CAD 客户端通过自己的授权调用时 |
 
-| 应用 | 应用代码 | 业务说明 | 默认输出上限 | 总上下文上限 |
-|---|---|---|---:|---:|
-| PP Code | `pp_code` | 编程、代码审查、工程理解及开发工具协作 | 32000 | 256000 |
-| PP Chat | `pp_chat` | 对话、问答、写作、摘要及通用 AI 助手 | 32000 | 256000 |
-| PP CAD | `pp_cad` | CAD 绘图、图纸理解及设计辅助 | 32000 | 256000 |
+从内容提取记忆的模型请求计入来源产品。打开文件和授予产品访问权限本身不会产生模型用量。Router 初始化预置 `pp_code`、`pp_chat` 和 `pp_cad`。上海 Suite 另行注册了 `pp_sheets`，新环境需要先登记这一产品，再同步购买了表格授权的公司。
 
-三者的初始模型权限均包含 `deepseek-flash`、`deepseek-v4-pro`、`kimi-k3.1-pro`，没有按产品设置模型白名单差异。模型需要已启用且供应商已配置；图片、工具、JSON Schema 等请求仍须满足模型自身能力。开通网关应用不代表对应产品已经上线。
-
-初始化 `pp_admin` 时，路由默认模型为 PP Chat 使用 DeepSeek Flash，PP Code / PP CAD 使用 Kimi。它们只是分类降级时的默认偏好；`auto` 仍按能力和任务选择模型，显式指定任一合格模型都可调用。通过开户 API 新建授权时，省略策略则默认使用 DeepSeek Flash，可以显式配置产品偏好。
-
-32000 / 256000 是网关统一配置，不是供应商原生容量声明。总上下文包含输入和预留输出；默认输出 32000 时，输入需在剩余 224000 的预算内。网关使用保守检查，实际可提交内容还受图片、工具等开销影响，详见 [API 限制](api-reference.md#输出与总上下文上限)。管理员仍可把某一授权的输出上限调低。
+网关总上下文上限为 256000 token，默认输出上限为 32000。可用模型、授权限额和剩余上下文共同决定一个请求能否执行。[接口限制](api-reference.md#输出与总上下文上限)
 
 ## 从早期演示目录升级
 
@@ -36,17 +33,17 @@ Alembic 数据迁移在现有应用记录上更新代码、名称和业务说明
 
 ## PP Code 的已有接入
 
-PP Code 的真实仓库为 [Principle-of-Procrastination/pp-code](https://github.com/Principle-of-Procrastination/pp-code)。客户端的使用、开发和发布步骤以该仓库文档为准，本页说明它与 pp-router 的应用归属、凭证和调用约束。
+Suite 员工使用企业账号配对本机启动器，Suite 服务端为这次请求选择本公司 `pp_code` 授权。下表供员工和 Code 维护者查找产品说明。
 
 | 要查看的内容 | PP Code 仓库入口 |
 |---|---|
-| 安装、启动、邀请码录入和更新 | [用户指南 `pp/WEB.md`](https://github.com/Principle-of-Procrastination/pp-code/blob/main/pp/WEB.md) |
+| 安装、启动、连接 Suite 账号和共享项目 | [Code 使用指南](https://github.com/Principle-of-Procrastination/pp-code/blob/main/pp/WEB.md) |
 | 本地后端、Credential 存储及模型接入 | [开发者指南 `pp/DEVELOPMENT.md`](https://github.com/Principle-of-Procrastination/pp-code/blob/main/pp/DEVELOPMENT.md) |
 | 公开部署参数模板 | [`pp/.env.web.example`](https://github.com/Principle-of-Procrastination/pp-code/blob/main/pp/.env.web.example) |
 | 构建、发布变量及客户端发版 | [发布指南 `pp/RELEASING.md`](https://github.com/Principle-of-Procrastination/pp-code/blob/main/pp/RELEASING.md) |
 | 发布构建的 CI 实现 | [`.github/workflows/pp-release.yml`](https://github.com/Principle-of-Procrastination/pp-code/blob/main/.github/workflows/pp-release.yml) |
 
-PP Code 已使用 `pp_admin` 下原 `agent` 应用的密钥接入。升级后该密钥归属显示为 **PP Code**，已有邀请码、网关地址和本地 Credential 存储继续有效。用户在 PP Code 的 Sign in 入口输入该应用密钥，由 PP Code 本地后端验证并保存；这不是 pp-router 管理员登录，也不代表给每位用户创建了公司账号。同一邀请码的用量仍归属同一个公司应用。
+仍在维护的独立 npm 客户端沿用应用邀请码。在旧版的 Sign in 中输入邀请码后，本地后端会验证并保存该公司应用的密钥。旧 `agent` 更名为 `pp_code` 时沿用原密钥和已有用量。
 
 **PP Code 维护者必须同步以下公开部署配置并重新构建发布：**
 
@@ -59,12 +56,10 @@ PP_ROUTER_OUTPUT_TOKENS=32000
 
 其他套件通过公司应用密钥确定归属，不在模型请求体里传应用代码。调用方如果额外保存了 `agent/chat/vision` 字符串用于展示或本地查表，应按 [应用代码迁移映射](#从早期演示目录升级)更新；保存应用 ID 的系统无需迁移 ID。
 
-凭证导出文件统一使用 `applications.pp_code/pp_chat/pp_cad`；验收脚本只读取当前产品代码。本机 `.local/credentials.json` / `.local/lighthouse-credentials.json` 的属性名已一次性更新，密钥值和 ID 保持不变。其他执行机如有旧导出文件，将应用属性名改为当前产品代码即可，不需要重新发钥。
+早期 Router 初始化导出的应用字段为 `applications.pp_code`、`applications.pp_chat` 和 `applications.pp_cad`。历史导出文件升级字段名时沿用既有应用 ID 和密钥。
 
 ## 新客户开通
 
-按客户创建公司，然后在共享目录中选择需要开通的产品。同一客户购买多个套件时，分别创建对应应用授权和密钥；不为每个客户重复登记产品，也不共用 PP Code 的邀请码接入 PP Chat / PP CAD，以便准确统计归属和独立撤销。
+Suite 客户由平台管理员在「企业管理」创建公司、设席位、指定企业管理员、开通产品。Suite 自动同步 Router 授权，企业管理员可随即开员工账号。确认公司授权同步后，做一次短调用，在月报中核对公司、产品和 `production` 环境。[企业管理](https://150.158.155.100:8546/platform) · [运营手册](operations.md)
 
-按当前产品配置为三个应用授权全部模型；如后续确有客户限定供应商等特殊要求，再单独调整该客户授权。正式客户使用自己的公司记录，`pp_admin` 保留为内部使用身份。
-
-新增公司只创建用量归属，不创建管理员账号或客户密码。默认 `pp_admin` 之所以既能管理平台又能发起演示调用，是初始化分别创建了管理员和同名公司；权限不来自公司名称。
+直接使用 Router API 的客户在网关建立公司、申请独立的产品授权和环境密钥。公司记录用于归集用量。Router 平台管理员账号单独管理。[服务端接入](integration.md)

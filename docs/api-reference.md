@@ -19,7 +19,7 @@
 
 管理员 `pp_admin` 与公司 `pp_admin` 分属 `admin_users`、`companies`，不存在“同名公司自动获得管理权限”的规则。创建公司、开通应用或发放应用密钥都不会创建管理员账号。当前没有客户后台登录或管理员账号管理 API；停用公司影响它的应用调用，不会停用独立的管理员账号。
 
-共享产品代码为 `pp_code`、`pp_chat`、`pp_cad`，均默认授权全部模型。开户接口需要的 `application_id` 是管理员提供的数据库 ID，不是应用代码；模型调用的归属只从密钥解析。
+Suite 生产使用 `pp_chat`、`pp_code`、`pp_sheets`。`pp_cad` 属于独立接入的 CAD。通用开户接口的 `application_id` 为管理员提供的数据库 ID。模型请求的归属由凭据确定。[应用目录](applications.md)
 
 ## 模型调用
 
@@ -131,6 +131,12 @@
 
 以下示例响应只列核心字段，ID 为示意值。创建成功当前返回 HTTP **200**，不是 201。所有写入均记录审计；未提供任何公开匿名注册接口。
 
+### Suite 企业授权同步
+
+`PUT /internal/v1/suite/companies/{code}` 供 Suite 平台使用，需要内部开户 Bearer 凭据。公司编号长 1–64 位，首位为小写字母或数字，其余可含小写字母、数字和连字符。请求体包含公司名称 `name`、是否启用 `enabled` 和对象 `grants`。`grants` 的键是已开通的 `pp_chat`、`pp_code` 或 `pp_sheets`，值是对应生产调用密钥的 SHA-256（64 位小写十六进制）。
+
+一次提交该公司需要启用的完整产品清单，缺少的产品会停用。用相同内容重试可安全收敛到相同授权状态。成功返回 `id`、`code` 和 `enabled`。公司身份冲突、已撤销或属于其他授权的密钥、尚未登记的产品会返回 `409`。变更保留历史 token 记录。企业成员、席位以及员工改密在 Suite 处理。[接口实现](../pprouter/admin.py)
+
 ### 公司
 
 `POST /internal/v1/companies`
@@ -155,7 +161,7 @@
 
 ### 应用授权
 
-从 PP Code / PP Chat / PP CAD 的共享目录选择应用并取得 ID。策略里的 `agent`、`vision` 等是任务分类，不是旧应用标识，应保留这些任务键。
+选择已经登记的产品并取得应用 ID。路由策略中的 `agent`、`vision` 等仍表示任务分类。[应用目录](applications.md)
 
 `POST /internal/v1/grants`：`company_id` 和 `application_id` 必填，其他字段见下表。示例显式指定完整策略，便于审阅：
 
