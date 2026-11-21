@@ -1,0 +1,14 @@
+name: Check maintenance documents and identify runtime changes
+description: Check repository-relative Markdown links and select the full CI for other changes
+outputs:
+  runtime:
+    description: Whether to run the product checks
+    value: ${{ steps.scope.outputs.runtime }}
+runs:
+  using: composite
+  steps:
+    - id: scope
+      shell: bash
+      env:
+        BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+      run: python3 "$GITHUB_ACTION_PATH/check.py"

@@ -1,10 +1,24 @@
 name: CI
 on:
   push:
-    branches: [main, master]
+    branches: [main]
   pull_request:
+    branches: [main]
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      runtime: ${{ steps.scope.outputs.runtime }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: scope
+        uses: ./.github/actions/change-scope
   local-mvp:
+    needs: changes
+    if: needs.changes.outputs.runtime == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
