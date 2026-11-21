@@ -6,6 +6,9 @@ on:
     branches: [main]
 jobs:
   changes:
+    permissions:
+      contents: read
+      actions: read
     runs-on: ubuntu-latest
     outputs:
       runtime: ${{ steps.scope.outputs.runtime }}

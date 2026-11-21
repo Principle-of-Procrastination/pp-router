@@ -1,6 +1,13 @@
 name: Check maintenance documents and identify runtime changes
 description: Check repository-relative Markdown links and select the full CI for other changes
+inputs:
+  check_links:
+    description: Check file targets after any required private submodules are available
+    default: 'true'
 outputs:
+  base:
+    description: Verified ancestor used to compare this push or the pull request base
+    value: ${{ steps.scope.outputs.base }}
   runtime:
     description: Whether to run the product checks
     value: ${{ steps.scope.outputs.runtime }}
@@ -10,5 +17,7 @@ runs:
     - id: scope
       shell: bash
       env:
+        GH_TOKEN: ${{ github.token }}
+        CHECK_LINKS: ${{ inputs.check_links }}
         BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
       run: python3 "$GITHUB_ACTION_PATH/check.py"
