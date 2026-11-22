@@ -14,7 +14,8 @@ def maintenance(path):
     return (path.suffix.lower() == ".md" and
             (path.parts[0] == "docs" or path.parent.as_posix() == "deploy/production" or
              path.as_posix() in {"deploy/README.md", "dev/README.md", "deploy/apps/README.md",
-                                 "STANDARDS.md", "UI-UX-STANDARD.md", "deploy/release/README.md", "pp/README.md"}))
+                                 "STANDARDS.md", "UI-UX-STANDARD.md", "deploy/release/README.md",
+                                 "pp/README.md", "pp/DEVELOPMENT.md", "pp/RELEASING.md"}))
 
 
 def verified_base():
