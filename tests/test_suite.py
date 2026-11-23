@@ -59,3 +59,45 @@ async def test_suite_reconciles_company_and_preserves_limits_and_key_ownership(e
         if g["id"] == grant["id"]
     )
     assert restored["rpm"] == 9 and restored["enabled"]
+
+
+async def test_cad_grant_meters_only_its_company_and_environment(env):
+    _, client, _, credentials = env
+    await admin_login(client, credentials)
+    control = {"Authorization": "Bearer " + credentials["provisioning_api_key"]}
+    companies = {}
+    for slug in ("benhu", "neighbor"):
+        key = "ppk_" + hashlib.sha256(slug.encode()).hexdigest()
+        result = await client.put(
+            "/internal/v1/suite/companies/" + slug,
+            headers=control,
+            json={
+                "name": slug,
+                "enabled": True,
+                "grants": {"pp_cad": hashlib.sha256(key.encode()).hexdigest()},
+            },
+        )
+        assert result.status_code == 200
+        companies[slug] = (result.json()["id"], key)
+    grants = (await client.get("/admin/v1/grants")).json()
+    cad = next(g["application_id"] for g in grants if g["company_id"] == companies["benhu"][0])
+    call = await client.post(
+        "/v1/chat/completions",
+        headers={
+            "Authorization": "Bearer " + companies["benhu"][1],
+            "X-Trace-Id": "cad-task-1",
+            "X-Tenant-Id": "neighbor",
+        },
+        json={"model": "deepseek-flash", "messages": [{"role": "user", "content": "fixture"}]},
+    )
+    assert call.status_code == 200 and call.headers["x-request-id"]
+    for company, expected in [("benhu", 30), ("neighbor", None)]:
+        report = await client.get(
+            "/admin/v1/reports/monthly",
+            params={
+                "company_id": companies[company][0],
+                "application_id": cad,
+                "environment": "production",
+            },
+        )
+        assert report.json()["summary"]["total_tokens"] == expected
