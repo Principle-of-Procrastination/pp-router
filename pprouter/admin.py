@@ -1,7 +1,7 @@
 import asyncio
 import secrets
 import time
-from typing import Literal
+from typing import Literal, get_args
 
 from fastapi import APIRouter, Depends, Request, Response
 from pydantic import Field
@@ -531,11 +531,14 @@ async def routing_preview(body: Playground, request: Request):
     )
 
 
+SuiteProduct = Literal["pp_chat", "pp_code", "pp_sheets", "pp_cad"]
+
+
 class SuiteCompany(StrictModel):
     name: str = Field(min_length=1, max_length=160)
     enabled: bool
     # Only hashes cross this control API. The Suite retains each encrypted plaintext key.
-    grants: dict[Literal["pp_chat", "pp_code", "pp_sheets"], str]
+    grants: dict[SuiteProduct, str]
 
 
 @internal.put("/suite/companies/{code}")
@@ -567,7 +570,7 @@ async def apply_suite_company(code: str, body: SuiteCompany, request: Request):
                 "Company identity already belongs to another record.",
             )
         company.enabled, company.name = body.enabled, body.name
-        for product in ("pp_chat", "pp_code", "pp_sheets"):
+        for product in get_args(SuiteProduct):
             app = await session.scalar(
                 select(Application).where(Application.code == product)
             )

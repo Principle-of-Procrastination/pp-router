@@ -163,6 +163,7 @@ def create_app(settings=None, providers=None):
                     "object": "model",
                     "created": 0,
                     "owned_by": m.provider,
+                    "input_modalities": ["text", "image"] if m.vision else ["text"],
                     "context_tokens": min(m.context_tokens, CONTEXT_TOKENS),
                     "max_output_tokens": min(
                         m.max_output_tokens, caller.grant.max_output_tokens, OUTPUT_TOKENS
